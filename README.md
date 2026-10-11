@@ -5,6 +5,16 @@ Gerçek zamanlı, **tamamen yerel** ve yapay zekâ destekli sesli sohbet botu (W
 > Bu depo yalnızca **plandır**. Kurulum veya çalışan kod içermez; amaç, üzerine inşa edeceğimiz
 > mimariyi ve kararları tek yerde toplamaktır.
 
+## Durum
+
+**Taslak (planlama) — `v0.1-plan`. Kod yok.**
+
+- Bu repo bir **tasarım/plan dokümanıdır**; çalışan uygulama içermez.
+- Her karar, gerekçesi ve **vazgeçilen alternatif** burada not edilir (bkz. [`docs/kararlar.md`](docs/kararlar.md)).
+- Ölçüm ve AR-GE sonuçları geldikçe aynı belgeler güncellenir.
+- Hedef (`<1 sn`) tutmazsa izlenecek yollar hazır: **Qwen3-ASR-0.6B**, **whisper yedeği**, akışlı ASR
+  optimizasyonu, LLM quant düşürme (bkz. [`docs/faz2-olcum-plani.md`](docs/faz2-olcum-plani.md), [`docs/kararlar.md`](docs/kararlar.md)).
+
 ## Hedef
 
 Kullanıcı konuşmayı bitirdikten sonra **1 saniye içinde** ilk sesin çıkması.

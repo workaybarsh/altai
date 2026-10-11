@@ -96,6 +96,7 @@ yerel dil modeline verir (**Huihui-Qwen3.5 9B Q5_K_M**, **MTP daima açık**) ve
 
 | Tarih | Değişiklik | Dosyalar |
 |---|---|---|
+| 2026-10-11 | README'ye **Durum** bölümü eklendi: taslak (`v0.1-plan`), kod yok, AR-GE yedek yolları not edildi. | README.md, AGENTS.md |
 | 2026-10-11 | "Değerlendirilen ve vazgeçilen alternatifler" bölümü eklendi; **whisper'ın daha önce düşünüldüğü** kayda geçirildi. | docs/kararlar.md, docs/mimari.md |
 | 2026-10-11 | STT whisper'dan **Qwen3-ASR-1.7B**'ye çekildi (Türkçe, akışlı, Apache-2.0); hız yedeği 0.6B. | README.md, AGENTS.md, docs/mimari.md, docs/faz2-olcum-plani.md, docs/kararlar.md |
 | 2026-10-11 | Mimariye tur dizisi + sorumluluk tablosu; Faz 2 ölçüm planı. | docs/mimari.md, docs/faz2-olcum-plani.md |
