@@ -79,6 +79,10 @@ sequenceDiagram
 
 Ses → yazı, **Qwen3-ASR** ile yapılır (whisper kullanılmaz).
 
+> **Tarihçe:** İlk planda STT için **whisper** (önce `large-v3`, sonra `large-v3-turbo`)
+> düşünülmüştü; sonra **Qwen3-ASR-1.7B**'ye geçildi. Gerekçe ve vazgeçilen alternatifler için bkz.
+> [`kararlar.md`](kararlar.md) → "Değerlendirilen ve vazgeçilen alternatifler".
+
 | Alan | Değer |
 |---|---|
 | Model | **Qwen3-ASR-1.7B** (Qwen3-1.7B + projector + 300M AuT encoder) |

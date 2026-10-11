@@ -22,6 +22,20 @@ Her karar: **ne**, **neden**, **alternatifler**. En yeni üstte.
 - **Tek sahipli hat.** Yalnızca `llama-server` + CPU işçileri; başka VRAM tüketicisi yok.
 - **Tahmin edilemez boşaltma yok.** Model takası yok; soğuk başlatma yok.
 
+## Değerlendirilen ve vazgeçilen alternatifler
+
+Planlama sırasında masaya gelip vazgeçilen seçenekler (kayıt için; en yeni üstte):
+
+| Konu | Düşünülen | Neden vazgeçildi |
+|---|---|---|
+| STT | **whisper.cpp** (önce `large-v3`, sonra `large-v3-turbo`) | Bu, STT için **ilk düşünülen** seçenekti. Yerini **Qwen3-ASR-1.7B**'ye bıraktı: Türkçe + 30 dil, **akışlı** çıkarım, dil algılama (LID), gürültü/BGM dayanıklılığı, Apache-2.0. Whisper hâlâ bir yedek olarak akılda tutulabilir |
+| STT | whisper `large-v3` | CPU'da yavaş; `<1 sn` hedefini tek başına yer |
+| LLM | Qwen3.8 **27B** (MamidLabs MAX/FLASH) | 8 GB VRAM'e sığmaz |
+| TTS | **Kokoro-82M** | Türkçe desteklemiyor |
+| TTS | **F5-TTS** | Sadece İngilizce/Çince |
+| TTS | **XTTS-v2** | Daha eski; ticari dışı lisans + CPU'da yavaş (Chatterbox v3 daha yeni ve doğal) |
+| Yığın | Python/PySide6, web arayüzü | MamidLabs altyapısı PowerShell 7 + WinForms olduğundan yeniden kullanım için o seçildi |
+
 ## Açık kararlar (henüz verilmedi)
 
 - [ ] ASR: **Qwen3-ASR-1.7B** yeterli mi, **0.6B**'ye mi inilmeli (Faz 2 ölçümü)
