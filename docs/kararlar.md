@@ -4,6 +4,7 @@ Her karar: **ne**, **neden**, **alternatifler**. En yeni üstte.
 
 | # | Tarih | Karar | Gerekçe | Alternatifler (neden değil) |
 |---|---|---|---|---|
+| 10 | 2026-10-11 | STT = **Qwen3-ASR-1.7B** (whisper yerine); hız yedeği **0.6B** | Türkçe + 30 dil, akışlı çıkarım, dil algılama, gürültü/BGM dayanıklılığı, Apache-2.0 | whisper large-v3-turbo (daha hızlı ama daha az yetenek), 0.6B (daha hızlı, biraz daha zayıf — yedek olarak duruyor) |
 | 9 | 2026-10-11 | LLM = **Huihui-Qwen3.5 9B Q5_K_M** (MamidLabs LITE ile aynı) | Kanıtlanmış, dosyalar zaten diskte (yeniden indirme yok), MTP ile ~97 tok/s | Başka 9B (yeniden indirme + doğrulanmamış), 27B (8 GB'a sığmaz) |
 | 8 | 2026-10-11 | STT = whisper.cpp **large-v3-turbo** | Sohbet doğruluk-kritik değil, hız kritik; turbo CPU'da ~0,2–0,4 sn → <1 sn hedefine sığar | large-v3 (CPU'da yavaş, hedefi yer), GPU'da whisper (LLM ile VRAM çakışır) |
 | 7 | 2026-10-11 | **MTP daima açık** | ~2x hız, kayıpsız çıktı, ayrı draft model gerekmez; canlı sohbet için kritik | MTP kapalı (yavaş, gereksiz) |
@@ -23,7 +24,8 @@ Her karar: **ne**, **neden**, **alternatifler**. En yeni üstte.
 
 ## Açık kararlar (henüz verilmedi)
 
-- [ ] Varsayılan TTS motoru (Piper mı, deneme sonrası XTTS mi?)
+- [ ] ASR: **Qwen3-ASR-1.7B** yeterli mi, **0.6B**'ye mi inilmeli (Faz 2 ölçümü)
+- [ ] TTS birincil motoru: **Chatterbox v3** (gerçekçi, GPU) mı **Piper** (hızlı, CPU) mı
 - [ ] LLM quantizasyonu: Q5 mi Q4 mü (TTS'i GPU'ya almak için Q4 gerekebilir)
-- [ ] Proje klasör/depo adı kesinleşmesi ve lisans metni
-- [ ] Akışlı STT gerekli mi, yoksa turbo final yeterli mi (Faz 2 ölçümü)
+- [ ] Akışlı ASR penceresi / VAD eşiği kesinleşmesi
+- [ ] Proje lisans metni

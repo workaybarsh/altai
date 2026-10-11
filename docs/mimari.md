@@ -1,35 +1,33 @@
 # Mimari
 
 Bu belge, mamidChats Chatbot'un tasarımını, veri akışını ve **gecikme bütçesini** tanımlar.
-Kod yok; üzerine inşa edilecek plan.
 
 ## 1. Ana ilke
 
 **GPU'da yalnızca dil modeli çalışır; STT ve TTS CPU'da çalışır.**
 
-Sebep: 8 GB VRAM'de Qwen 3.5 9B MTP'li hâlde kartın sınırına oturur. whisper ve TTS'i GPU'ya
-almak model takasını (ve saniyeler süren yeniden yüklemeyi) zorunlu kılar — bu da < 1 sn hedefini
-öldürür. Bu yüzden iş bölümü yapılır ve dil modeli **yerleşik** kalır.
+Sebep: 8 GB VRAM'de Qwen 3.5 9B MTP'li hâlde kartın sınırına oturur. STT (Qwen3-ASR) ve TTS'i
+GPU'ya almak model takasını zorunlu kılar — bu da `<1 sn` hedefini öldürür. Bu yüzden iş bölümü
+yapılır ve dil modeli **yerleşik** kalır.
 
 ## 2. Veri akışı
 
 ```
                  ┌─────────────────────────── CPU ───────────────────────────┐
                  │                                                            │
- Mikrofon ──► VAD/kayıt ──► whisper.cpp turbo ──► metin                        │
-                 │                                   │                        │
-                 │                                   ▼                        │
-                 │                        ┌──── GPU: Qwen 3.5 9B (MTP) ────┐   │
-                 │                        │  yanıt tokenları (akış)         │  │
-                 │                        └────────────┬───────────────────┘   │
-                 │                                     ▼                        │
- Hoparlör ◄── çalma ◄── TTS (Piper/XTTS/SAPI) ◄── ilk cümle ◄──┘                │
-                 │                                                            │
+ Mikrofon ──► VAD/kayıt ──► Qwen3-ASR ──► metin                              │
+                 │                            │                              │
+                 │                            ▼                              │
+                 │                 ┌──── GPU: Qwen 3.5 9B (MTP) ────┐        │
+                 │                 │  yanıt tokenları (akış)         │        │
+                 │                 └────────────┬───────────────────┘        │
+                 │                              ▼                            │
+ Hoparlör ◄── çalma ◄── TTS (Chatterbox/Piper) ◄── ilk cümle ◄──┘             │
                  └────────────────────────────────────────────────────────────┘
 ```
 
 **Boru hattı (paralel):** LLM ilk cümleyi üretir → hemen TTS'e gider → kullanıcı onu duyarken LLM
-kalanı yazar. Aşamalar üst üste biner; toplam gecikme = en yavaş tek zincir, hepsinin toplamı değil.
+kalanı yazar. Toplam gecikme = en yavaş tek zincir.
 
 ### 2.1 Bir turun zaman çizelgesi
 
@@ -38,20 +36,18 @@ sequenceDiagram
     autonumber
     participant U as Kullanıcı
     participant AC as Ses yakalama (CPU)
-    participant STT as whisper turbo (CPU)
+    participant ASR as Qwen3-ASR (CPU)
     participant LLM as Qwen 3.5 9B (GPU, MTP)
     participant TTS as TTS (CPU)
     participant SP as Hoparlör
 
     U->>AC: konuşur
     AC->>AC: VAD / bas-konuş bitişi (0–200 ms)
-    AC->>STT: 16 kHz mono WAV
-    STT-->>LLM: metin (≤400 ms)
+    AC->>ASR: 16 kHz mono WAV
+    ASR-->>LLM: metin (hedef ≤400 ms; 1.7B'de sınırda)
     LLM-->>TTS: ilk cümle (≤250 ms TTFT)
     TTS-->>SP: ilk ses (≤150 ms)
     Note over LLM,TTS: LLM kalan cümleleri yazmaya devam eder
-    LLM-->>TTS: sonraki cümleler (akış)
-    TTS-->>SP: ses sürer
     Note over U,SP: Kullanıcı konuşursa çalma anında durur (barge-in)
 ```
 
@@ -59,107 +55,96 @@ sequenceDiagram
 
 | Bileşen | Sorumluluk | Girdi | Çıktı | Hata durumu |
 |---|---|---|---|---|
-| Ses yakalama | Mikrofonu kaydet, VAD/bitiş kararı | Mikrofon | 16 kHz mono WAV | Cihaz yok → bildir, turu iptal |
-| STT (whisper turbo) | Konuşmayı yazıya çevir | WAV | Metin | Boş/anlamsız → "anlayamadım", yeniden dinle |
-| LLM (9B + MTP) | Yanıt üret (akış) | Metin + geçmiş | Token akışı | Sunucu yok → yeniden başlat, durum göster |
-| Boru hattı | Aşamaları paralelleştir, cümleye böl | Token akışı | Cümle birimleri | Zaman aşımı → kısmi yanıtı sun |
-| TTS | Cümleyi sese çevir | Cümle | Ses | Motor hatası → metne düş (ekranda göster) |
-| Çalma | Sesi çal, barge-in'de dur | Ses | Hoparlör | Cihaz yok → metne düş |
-| Arayüz (WinForms) | Durum, geçmiş, mod seçimi | Olaylar | UI | — |
+| Ses yakalama | Kaydet, VAD/bitiş kararı | Mikrofon | 16 kHz mono WAV | Cihaz yok → bildir, turu iptal |
+| ASR (Qwen3-ASR) | Konuşmayı yazıya çevir | WAV | Metin | Boş/anlamsız → "anlayamadım" |
+| LLM (9B + MTP) | Yanıt üret (akış) | Metin + geçmiş | Token akışı | Sunucu yok → yeniden başlat |
+| Boru hattı | Paralelleştir, cümleye böl | Token akışı | Cümleler | Zaman aşımı → kısmi yanıt |
+| TTS | Cümleyi sese çevir | Cümle | Ses | Motor hatası → metne düş |
+| Çalma | Ses çal, barge-in'de dur | Ses | Hoparlör | Cihaz yok → metne düş |
+| Arayüz (WinForms) | Durum, geçmiş, mod | Olaylar | UI | — |
 
 ## 3. Gecikme bütçesi (hedef < 1000 ms)
 
 | Aşama | Hedef | Yöntem |
 |---|---|---|
-| Endpoint (konuşma bitti mi?) | 0–200 ms | Bas-konuş = 0; VAD'de Silero + ~200 ms eşik |
-| STT kısmi/final metin | ≤ 400 ms | **large-v3-turbo** CPU'da (akış/kısa pencere) |
-| LLM ilk token | ≤ 250 ms | Model **yerleşik** + **KV prefix cache** |
-| TTS ilk ses | ≤ 150 ms | Piper, **ilk cümlede** tetikle |
-| Çalma tamponu | ~50 ms | Küçük tampon + öncelikli ses thread'i |
-| **Toplam (paralel)** | **≈ 800 ms** | — |
+| Endpoint | 0–200 ms | Bas-konuş = 0; VAD + ~200 ms eşik |
+| STT (Qwen3-ASR) | ≤ 400 ms | Akışlı çıkarım; 0.6B hızlı, 1.7B sınırda |
+| LLM ilk token | ≤ 250 ms | Yerleşik model + **KV prefix cache** |
+| TTS ilk ses | ≤ 150 ms | Chatterbox/Piper, ilk cümlede |
+| Çalma tamponu | ~50 ms | Küçük tampon |
 
-> t₀ = kullanıcı son sözcüğü bitirdi · t₁ = ilk ses çıktı · Hedef `t₁ − t₀ < 1000 ms`
+> t₀ = son sözcük bitti · t₁ = ilk ses çıktı · Hedef `t₁ − t₀ < 1000 ms`
 
-## 4. STT: neden turbo
+## 4. STT: Qwen3-ASR
 
-- Sohbet, **doğruluk-kritik** değil; hız kritik. `large-v3` CPU'da yavaş ve < 1 sn hedefini tek
-  başına yer.
-- `large-v3-turbo` (distil edilmiş decoder) CPU'da ~0,2–0,4 sn → hedefe rahat sığar ve GPU'yu
-  serbest bırakır.
-- Silero VAD ile halüsinasyon sıfırlanır (MamidLabs'ta ölçülmüş: VAD halüsinasyonu kaldırır).
-- İleride gerekirse iki geçişli (turbo kısmi → large-v3 rafine) yükseltme kapısı açık bırakılır;
-  varsayılan **turbo**.
+Ses → yazı, **Qwen3-ASR** ile yapılır (whisper kullanılmaz).
+
+| Alan | Değer |
+|---|---|
+| Model | **Qwen3-ASR-1.7B** (Qwen3-1.7B + projector + 300M AuT encoder) |
+| Lisans | Apache-2.0 |
+| Dil | 30 dil + 22 Çince lehçe; **Türkçe (tr) destekli** |
+| Yetenek | Dil algılama (LID), **akışlı + çevrimdışı**, gürültü/BGM/söylenen ses dayanıklı |
+| Boyut | fp16 ~4,7 GB · Q8 ~2,5 GB · Q4 ~1,3 GB |
+| Nerede | **CPU** — saf C (`antirez/qwen-asr`) veya `qwen-asr` / vLLM |
+| Yedek | **Qwen3-ASR-0.6B** (CPU tatlı noktası) |
+
+- SOTA açık kaynak ASR; Whisper-large-v3'ü birçok benchmarkta geçer.
+- **Akışlı çıkarım** ile kısmi metin erken üretilir → algılanan gecikme düşer.
+- **Hız uyarısı:** CPU'da 1.7B gerçek zamanın ~4 katı (11 sn ses ~2,6 sn). Uzun cümlede `<1 sn`
+  sınırda; **Qwen3-ASR-0.6B** (~8x) veya akışlı pencere daraltma ile telafi edilir. Faz 2'de ölçülür.
+- Silero VAD ile konuşma bölütlenir (boş bölge filtresi).
 
 ## 5. LLM: Huihui-Qwen3.5 9B (LITE ile aynı) + MTP (daima açık)
-
-MamidLabs LITE profilinde çalışan modelin **aynısı** kullanılır:
 
 | Alan | Değer |
 |---|---|
 | Model | **Huihui-Qwen3.5 9B Q5_K_M** (GGUF) |
-| MTP | `mtp_inject.py` ile `blk.<N>.nextn.*` geri eklenir (kaynak: `huihui-ai/Huihui-Qwen3.5-9B-abliterated`) |
+| MTP | `mtp_inject.py` ile `blk.<N>.nextn.*` |
 | Çalıştırma | `llama-server` + `--spec-type draft-mtp` |
-| Bağlam | varsayılan 32768 |
-| mmproj | Q8_0 isteğe bağlı; bu proje ses-odaklı → **varsayılan yüklenmez** (VRAM tasarrufu) |
+| mmproj | İsteğe bağlı; ses-odaklı → **varsayılan yüklenmez** |
 
-- **Yeniden indirme yok:** dosyalar MamidLabs kökünde mevcut; paylaşılabilir.
-- Model GPU'da **yerleşik** çalışır; turlar arasında boşaltılmaz.
-- **MTP (Multi-Token Prediction)** `--spec-type draft-mtp` ile **daima açık** (kesin kural):
-  - Ayrı draft model gerekmez (GGUF'un gömülü `nextn` başlığını kullanır).
-  - Çıktı **kayıpsız** (kabul edilen tokenlar hedef modelle doğrulanır).
-  - MamidLabs ölçümü: kabul ~0,93, ~2x hız (36 → ~75 tok/s).
-  - Bayrak yalnızca GGUF gerçekten MTP katmanı taşıyorsa eklenir (`Test-GgufHasMtp`).
-- Bu projede ComfyUI/OCR olmadığı için GPU tamamen modele ayrılır → LITE'ın kutudaki küçük
-  aşımı (tolerans 1024 MiB) burada **beklenmez**; daha rahat sığar.
-- **KV prefix cache**: her turda yalnızca yeni tokenlar işlenir; geçmiş baştan işlenmez.
+- **Yeniden indirme yok:** dosyalar MamidLabs kökünde mevcut.
+- GPU'da **yerleşik**; turlar arasında boşaltılmaz.
+- **MTP kayıpsız** (kabul edilen tokenlar hedef modelle doğrulanır); MamidLabs ölçümü ~2x hız.
+- **KV prefix cache**: her turda yalnızca yeni tokenlar işlenir.
 
 ## 6. TTS: takas edilebilir katman
 
 | Motor | Doğallık | Türkçe | CPU'da gerçek zamanlı | Lisans | Rol |
 |---|---|---|---|---|---|
-| **Piper** | Orta | ✅ | ✅ (RTF ~0,35) | GPL-3.0 | **Varsayılan (canlı)** |
-| **XTTS-v2** | En yüksek (+klonlama) | ✅ (17 dil) | ❌ | Ticari dışı (CPML) | Opsiyonel "yüksek kalite" |
-| Kokoro-82M | Yüksek | ❌ | ✅ | Apache-2.0 | TR yok → elenir |
-| F5-TTS | Çok yüksek | ❌ (EN/ZH) | ❌ | CC-BY-NC | TR yok → elenir |
-| Windows SAPI | Düşük | ✅ | ✅ | — | Yedek / sıfır kurulum |
+| **Chatterbox Multilingual v3** | En yüksek | ✅ | ❌ (GPU ister) | MIT | **Birincil (gerçekçi)** |
+| **Piper** | Orta | ✅ | ✅ | GPL-3.0 | Hızlı/yedek |
+| XTTS-v2 | Yüksek | ✅ | ❌ | Ticari dışı | Alternatif |
+| Kokoro / F5-TTS | Yüksek | ❌ | ✅ / ❌ | Apache / CC-BY-NC | TR yok → elenir |
+| Windows SAPI | Düşük | ✅ | ✅ | — | Son çare |
 
-- Motor **takas edilebilir** tasarlanır; varsayılan Piper (düşük gecikme), "yüksek kalite" modu XTTS.
-- Bu, MamidLabs'taki `audioQuality normal/high` deseninin TTS ikizidir.
-- ⚠️ **Lisans:** XTTS-v2 ticari kullanıma kapalı. Proje **kişisel/kapalı** olduğu için sorun değil;
-  ileride dağıtım gündeme gelirse Chatterbox (MIT) veya Piper'a geçilir.
+- Varsayılan **Chatterbox v3**; GPU'da ~2–3 GB → LLM Q4 ile ~8 GB (ölçüm şart).
+- GPU sıkışırsa **Piper** (CPU) canlı moda düşer.
+- Chatterbox çıktıları PerTh filigranı taşır (MIT, duyulmaz) — engel değil.
 
 ## 7. Kaynak bütçesi (8 GB VRAM)
 
 | Kaynak | Kullanım |
 |---|---|
 | GPU (8 GB) | Qwen 3.5 9B + MTP + KV cache (kartın sınırında) |
-| CPU çekirdekleri | whisper turbo (dinleme) **veya** TTS (konuşma) — sırayla, çakışmaz |
+| CPU çekirdekleri | Qwen3-ASR (dinleme) **veya** TTS (konuşma) — sırayla |
 
-- STT (dinlerken) ve TTS (konuşurken) aynı anda çalışmaz → CPU çekişmesi düşük.
-- llama.cpp yalnızca GPU'da; CPU payı önemsiz.
-
-## 8. Önerilen bileşen/dosya yapısı (MamidLabs deseni)
+## 8. Önerilen dosya yapısı
 
 | Yol | İçerik |
 |---|---|
-| `mamidchats-desktop.ps1` | Ana uygulama: WinForms arayüzü, sohbet durumu, olay döngüsü |
-| `agent/llm-run.ps1` | `llama-server` başlat/durdur, MTP, VRAM kapısı (MamidLabs `manage-qwen.ps1` uyarlaması) |
-| `agent/stt-tools.py` | 16 kHz mono dönüştürme + `whisper-cli` turbo + Silero VAD |
-| `agent/tts-tools.py` | Takas edilebilir TTS: Piper / XTTS / SAPI |
-| `agent/pipeline.ps1` | Boru hattı orkestrasyonu: STT → LLM (akış) → cümle bölme → TTS |
-| `agent/audio-capture.ps1` | winmm `mciSendString` ile bağımlılıksız kayıt (MamidLabs deseni) |
-| `scripts/` | kurulum, model indirme, tanı |
-| `docs/` | bu belgeler |
-| `tests/` | pytest + gerçek pwsh |
+| `mamidchats-desktop.ps1` | WinForms arayüzü, olay döngüsü |
+| `agent/llm-run.ps1` | `llama-server`, MTP, VRAM kapısı |
+| `agent/asr-tools.py` | Qwen3-ASR çıkarımı (akışlı) |
+| `agent/tts-tools.py` | Chatterbox / Piper / SAPI |
+| `agent/pipeline.ps1` | ASR → LLM (akış) → cümle → TTS |
+| `agent/audio-capture.ps1` | winmm kayıt |
 
 ## 9. Riskler ve açık sorular
 
-1. **Endpoint sezgisi.** VAD çok agresifse cümleyi keser, çok yavaşsa gecikme artar. Bas-konuş bunu
-   sıfırlar; sürekli modda eşik ayarı gerekir.
-2. **Akışlı STT.** whisper.cpp düzgün akış sunmaz; kısa pencereler + kısmi metin yaklaşımı test
-   edilmeli. Varsayılan: konuşma bitince turbo ile hızlı final (hedefe yeter).
-3. **Barge-in.** Kullanıcı konuşurken çalmayı anında kesme; yankı (echo) riski → kulaklık önerisi
-   veya yankı bastırma.
-4. **TTS ilk ses gecikmesi.** Piper'da ölçülmeli; XTTS GPU'ya alınırsa LLM ile VRAM çakışması.
-5. **9B MTP VRAM payı.** Q5'te kartın sınırında (MamidLabs ölçümü); TTS'i GPU'ya almak için Q4'e
-   inmek gerekebilir — ayrı ölçüm işi.
+1. **Qwen3-ASR CPU hızı.** 1.7B `<1 sn` sınırda; 0.6B yedeği veya akış optimizasyonu gerekebilir.
+2. **Endpoint sezgisi.** VAD agresif/yavaş dengesi; bas-konuş sıfırlar.
+3. **Barge-in.** Yankı riski → kulaklık/yankı bastırma.
+4. **TTS GPU payı.** Chatterbox GPU'ya alınırsa LLM Q4'e inmeli; ölçüm gerek.
+5. **CPU çekişmesi.** ASR ve TTS aynı anda çalışmaz ama yüklü makinede ölçülmeli.
