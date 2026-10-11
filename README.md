@@ -86,7 +86,8 @@ Tüm kararlar ve gerekçeleri: [`docs/kararlar.md`](docs/kararlar.md).
 
 | Yol | İçerik |
 |---|---|
-| [`docs/mimari.md`](docs/mimari.md) | Mimari, veri akışı, gecikme bütçesi, STT/TTS analizi |
+| [`docs/mimari.md`](docs/mimari.md) | Mimari, veri akışı, tur dizisi, sorumluluk tablosu, gecikme bütçesi, STT/TTS analizi |
+| [`docs/faz2-olcum-plani.md`](docs/faz2-olcum-plani.md) | Faz 2: STT hattı ve `<1 sn` ölçüm planı |
 | [`docs/kararlar.md`](docs/kararlar.md) | Karar günlüğü (ne, neden, alternatifler) |
 | [`AGENTS.md`](AGENTS.md) | Geliştirici ve yapay zekâ ajanları için altyapı rehberi |
 

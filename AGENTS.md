@@ -99,5 +99,6 @@ yanıtı sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 
 
 | Tarih | Değişiklik | Dosyalar |
 |---|---|---|
+| 2026-10-11 | Mimariye tur dizisi (Mermaid) + bileşen sorumluluk tablosu eklendi; Faz 2 ölçüm planı yazıldı. | docs/mimari.md, docs/faz2-olcum-plani.md, README.md |
 | 2026-10-11 | Model MamidLabs LITE ile eşitlendi (Huihui-Qwen3.5 9B Q5_K_M + MTP enjekte). | README.md, AGENTS.md, docs/mimari.md, docs/kararlar.md |
 | 2026-10-11 | Depo açıldı; plan yazıldı. STT turbo, MTP daima açık, hedef <1 sn. | README.md, AGENTS.md, docs/mimari.md, docs/kararlar.md |

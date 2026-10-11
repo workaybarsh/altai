@@ -31,6 +31,42 @@ almak model takasını (ve saniyeler süren yeniden yüklemeyi) zorunlu kılar �
 **Boru hattı (paralel):** LLM ilk cümleyi üretir → hemen TTS'e gider → kullanıcı onu duyarken LLM
 kalanı yazar. Aşamalar üst üste biner; toplam gecikme = en yavaş tek zincir, hepsinin toplamı değil.
 
+### 2.1 Bir turun zaman çizelgesi
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as Kullanıcı
+    participant AC as Ses yakalama (CPU)
+    participant STT as whisper turbo (CPU)
+    participant LLM as Qwen 3.5 9B (GPU, MTP)
+    participant TTS as TTS (CPU)
+    participant SP as Hoparlör
+
+    U->>AC: konuşur
+    AC->>AC: VAD / bas-konuş bitişi (0–200 ms)
+    AC->>STT: 16 kHz mono WAV
+    STT-->>LLM: metin (≤400 ms)
+    LLM-->>TTS: ilk cümle (≤250 ms TTFT)
+    TTS-->>SP: ilk ses (≤150 ms)
+    Note over LLM,TTS: LLM kalan cümleleri yazmaya devam eder
+    LLM-->>TTS: sonraki cümleler (akış)
+    TTS-->>SP: ses sürer
+    Note over U,SP: Kullanıcı konuşursa çalma anında durur (barge-in)
+```
+
+### 2.2 Bileşen sorumlulukları
+
+| Bileşen | Sorumluluk | Girdi | Çıktı | Hata durumu |
+|---|---|---|---|---|
+| Ses yakalama | Mikrofonu kaydet, VAD/bitiş kararı | Mikrofon | 16 kHz mono WAV | Cihaz yok → bildir, turu iptal |
+| STT (whisper turbo) | Konuşmayı yazıya çevir | WAV | Metin | Boş/anlamsız → "anlayamadım", yeniden dinle |
+| LLM (9B + MTP) | Yanıt üret (akış) | Metin + geçmiş | Token akışı | Sunucu yok → yeniden başlat, durum göster |
+| Boru hattı | Aşamaları paralelleştir, cümleye böl | Token akışı | Cümle birimleri | Zaman aşımı → kısmi yanıtı sun |
+| TTS | Cümleyi sese çevir | Cümle | Ses | Motor hatası → metne düş (ekranda göster) |
+| Çalma | Sesi çal, barge-in'de dur | Ses | Hoparlör | Cihaz yok → metne düş |
+| Arayüz (WinForms) | Durum, geçmiş, mod seçimi | Olaylar | UI | — |
+
 ## 3. Gecikme bütçesi (hedef < 1000 ms)
 
 | Aşama | Hedef | Yöntem |
