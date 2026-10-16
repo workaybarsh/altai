@@ -22,9 +22,14 @@ Repo: `github.com/workaybarsh/aybars_says`
   **alternatif aranıyor** (karar #14 revize edilecek)
 
 ## Açık işler / sıradaki adımlar
-1. **Türkçe TTS alternatifi:** aday **XTTS-v2** (Türkçe + klonlama, Windows/pip). Kur, Türkçe örnek üret,
-   Chatterbox TR ile karşılaştır. Sıradaki adaylar: **Chatterbox v3** (GitHub main), **Piper** (MIT, hızlı yedek)
-2. **Fish S2 Pro** → yalnızca **izole WSL denemesi** (merak); projeye entegre **değil** (karar #15)
+1. **Türkçe TTS alternatifi:** Chatterbox ve Fish Türkçede yetersiz kaldı.
+   **Aktif aday: Trendyol-TTS** (`openbmb/VoxCPM2` + Türkçe LoRA, **MIT**, ~2B).
+   - Test betiği: `scripts/tts-trendyol-test.py` → `python scripts/tts-trendyol-test.py`
+   - Kurulum: `pip install voxcpm soundfile`
+   - Örnek çıktı: `logs\tts\trendyol-tr.wav`
+   - Beğenilirse: `agent/tts-tools.py`'ye `voxcpm` backend + `docs/kararlar.md` #14 güncelle
+   - Yedekler: **CosyVoice2**, **XTTS-v2**
+2. **Fish S2 Pro** → ~~izole WSL denemesi~~ (denendi, Türkçe zayıf, **silindi**; WSL kaldı)
 3. **Faz 2 gerçek ölçüm:** `large-v3-turbo` ile gecikme/RTF (hedef donanım, N=10)
 4. **Faz 3:** LLM + MTP + prefix cache
 
