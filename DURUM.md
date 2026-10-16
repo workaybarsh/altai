@@ -22,7 +22,7 @@ Repo: `github.com/workaybarsh/aybars_says`
 - **Chatterbox TR düzeltmesi (kod):** kök neden tokenizer'ın her zaman `NFKD` uygulaması +
   Türkçe-duyarsız `lower()`; `install_tr_tokenizer_fix()` yazıldı, `--chatterbox-tr-fix` eklendi
   (**19 test**). Ses etkisi GPU boşken ölçülecek (karar #18, `docs/tts-kiyaslama.md` §9)
-- Testler: `python -m pytest -q` → **17 test** geçiyor
+- Testler: `python -m pytest -q` → **19 test** geçiyor
 
 ## Önemli kararlar (özet)
 - **LLM:** Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M **+ MTP zorunlu** (kararlar #12, #13)
@@ -32,6 +32,10 @@ Repo: `github.com/workaybarsh/aybars_says`
   (`voxcpm` backend, kararlar #14/#16). Canlı TR hattı hâlâ açık (kararlar #16 açık maddesi)
 
 ## Açık işler / sıradaki adımlar
+0. ⏳ **GPU boşalınca (öncelik): SES ÇIKIŞI testi.** Chatterbox TR düzeltmesinin (`--chatterbox-tr-fix`)
+   A/B ölçümü — aynı cümle 4 koşul (doğru TR × yama açık/kapalı, ASCII) → Whisper geri-çevirim + WER
+   + kulak. Plan: `docs/tts-kiyaslama.md` §9.1. Ön koşul: Chatterbox ağırlıkları ilk çalıştırmada
+   iner (~2 GB). **Kullanıcı notu:** "iş bitince ses çıkışı mevzusunu tekrar deneyelim."
 1. **Türkçe TTS:** Trendyol-TTS değerlendirildi → **anlaşılır** ama canlı hat için **ağır**
    (VRAM ~5,6 GB, RTF ~3). `agent/tts-tools.py`'ye `voxcpm` backend eklendi (çevrimdışı/yüksek
    kalite). Ayrıntı: `docs/tts-tr-sonuc.md`.
