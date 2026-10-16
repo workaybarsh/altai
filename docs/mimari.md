@@ -149,6 +149,41 @@ Ses → yazı, **whisper.cpp** ile yapılır (Qwen3-ASR kullanılmaz).
 > 8 GB'a çok yaklaşır. Sıkışırsa **i1-Q4_K_M** (~5,6 GB), `q4_0` KV veya düşük `-c` değerlendirilir.
 > Enjeksiyon sonrası VRAM **ölçülmelidir** (bkz. [`mtp-dogrulama.md`](mtp-dogrulama.md)).
 
+### 7.1 Donanım profilleri (A / B)
+
+İki hedef makine için önerilen dağılım. **Değişmez kural:** GPU'da **yalnız LLM**; STT+TTS CPU'da
+(model takası yok). Aşağıdaki iki profil bu kural etrafında ölçeklenir.
+
+> Değerler **tahmin/aralık**; LLM dışındaki rakamlar bu makinede henüz ölçülmedi.
+> KV önbellek ~72 KB/token → 4k ctx ≈ 0,3 GB · 8k ≈ 0,6 GB · 32k ≈ 2,3 GB.
+
+#### Profil A — 8 GB VRAM · 16 GB RAM (hedef/düşük)
+
+| Rol | Motor | Nerede | Kaynak | Not |
+|---|---|---|---|---|
+| LLM | Qwen3.5-9B **i1-Q5_K_M** + MTP | **GPU** | ~7,0–7,5 GB VRAM | bağlam **≤ 8k**; sıkışırsa **i1-Q4_K_M** (~5,6 GB) |
+| STT | whisper.cpp **large-v3-turbo** | **CPU** | RAM ~2 GB | gerekirse `medium`/`small` |
+| TTS (canlı) | **Piper** | **CPU** | RAM ~0,1 GB | robotik ama hızlı |
+| TTS (kalite/offline) | **Chatterbox** (TR fix) | **CPU** | RAM ~2–3 GB | CPU'da yavaş (RTF>1 olabilir) |
+| **Toplam** | | | **GPU ~7,5 / 8 GB** · **RAM ~8–12 / 16 GB** | Whisper+TTS GPU'ya **alınamaz** |
+
+#### Profil B — 16 GB VRAM · 32 GB RAM (mevcut makine)
+
+| Rol | Motor | Nerede | Kaynak | Not |
+|---|---|---|---|---|
+| LLM | Qwen3.5-9B i1-Q5_K_M + MTP | **GPU** | ~7,1–9,1 GB | 4k→32k ctx; KV büyür |
+| STT | whisper.cpp large-v3-turbo | CPU **veya GPU** | CPU RAM ~2 GB · GPU ~2 GB | GPU'da daha hızlı |
+| TTS | Chatterbox (TR fix) | CPU **veya GPU** | GPU ~2–3 GB | GPU'da gerçek zamana yakın |
+| **Üçü birlikte (hepsi GPU)** | | **GPU** | **~11–14 / 16 GB** | sığar; LLM bağlamı kısıtlanır |
+
+**Önerilen varyantlar (Profil B):**
+- **B-1 (kurala sadık):** LLM GPU; STT+TTS CPU → GPU rahat, CPU yükü yük.
+- **B-2 (dengeli):** LLM + Chatterbox **GPU'da** (~9–11 GB), Whisper CPU → iyi gecikme/hız.
+- **B-3 (en düşük gecikme):** üçü de **GPU'da** (~11–14 GB) → sığar ama LLM bağlamı kısılır.
+
+> **VoxCPM2 / Trendyol-TTS (~5,6 GB):** Profil A'da **imkânsız**; Profil B'de LLM ile ~13–15 GB →
+> çok sıkışır → her iki profilde de **çevrimdışı** kalır (karar #16).
+
 ## 8. Önerilen dosya yapısı
 
 | Yol | İçerik |

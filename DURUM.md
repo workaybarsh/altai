@@ -48,3 +48,5 @@ Repo: `github.com/workaybarsh/aybars_says`
 - **Örnek sesler:** `logs\tts\tr-ornek.wav`, `logs\tts\en-ornek.wav`,
   `logs\tts\trendyol-tr.wav`, `logs\tts\trendyol-tr2.wav`
 - Proje **native Windows** hedefler; Fish/WSL yalnızca deneme amaçlı
+- **İki donanım profili:** A (8 GB VRAM/16 GB RAM) ve B (16 GB VRAM/32 GB RAM) → model/CPU-GPU
+  dağılımı ve VRAM/RAM tahminleri: [`docs/mimari.md`](docs/mimari.md) §7.1
