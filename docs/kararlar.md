@@ -51,6 +51,8 @@ Planlama sırasında masaya gelip vazgeçilen seçenekler (kayıt için; en yeni
 ## Açık kararlar (henüz verilmedi)
 
 - [ ] LLM quantizasyonu: **i1-Q5_K_M** (varsayılan) mı, VRAM için **i1-Q4_K_M** (~5,6 GB) mı?
+- [x] **LLM bağlamı: sohbette 4k (kayan pencere)**, üst sınır 8k — sesli sohbet botu olduğu için 32k
+  gerekmez; KV önbellek ~0,3 GB'da kalır (VRAM tasarrufu). *(Profil notu: [`mimari.md`](mimari.md) §7.1.)*
 - [x] **MTP:** quant GGUF'ta yok → `mtp_inject.py` ile enjekte edilir (kaynak doğrulandı). Kabul
   testleri: [`mtp-dogrulama.md`](mtp-dogrulama.md). *(Karar #13.)*
 - [ ] MTP enjeksiyonu sonrası 8 GB VRAM'e sığıyor mu (gerçek ölçüm)?

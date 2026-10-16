@@ -35,7 +35,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 | Taban model | `huihui-ai/Huihui-Qwen3.5-9B-abliterated` (Qwen3.5-9B türevi, abliterated) |
 | MTP | `mtp_inject.py` ile `blk.<N>.nextn.*` (kaynak: `huihui-ai/Huihui-Qwen3.5-9B-abliterated`) |
 | Çalıştırma | `llama-server` + `--spec-type draft-mtp` (daima) |
-| Bağlam | varsayılan 32768 |
+| Bağlam | sohbette **4k** (kayan pencere), üst sınır **8k**; **32768 gerekmez** (sesli sohbet botu) |
 
 > **Doğrulandı (2026-10-16):** hedef quant GGUF (`i1-Q5_K_M`) MTP/`nextn` katmanı **içermez**;
 > kaynak `huihui-ai/Huihui-Qwen3.5-9B-abliterated` deposunda **15 MTP tensoru mevcut** ve
