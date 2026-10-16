@@ -117,6 +117,7 @@ Sesli asistan tipik olarak **kısa** yanıt üretir (0–50 karakter). Paper'ın
 |---|---|---|---|---|---|---|
 | **Chatterbox Multilingual v3** | 0,5B | **~2 GB** (min) – ~4 GB | **~0,05–0,2** | var (chunked) | ✅ (ama diakritik hatası) | **MIT** |
 | **VoxCPM2** (→ Trendyol-TTS) | 2B (2,3B) | ~5 (bf16) – ~8 GB | ~0,30 (4090) / ~0,13 Nano-vLLM | var (chunk) | ✅ | Apache-2.0 |
+| **CosyVoice 1** (CosyVoice-300M) | 0,3B | ~2–6 GB (kaynak) | eski/orta (2024-07) | ~150 ms | ❌ TR yok (5 dil: zh/en/ja/ko/yue) | Apache-2.0 |
 | **CosyVoice 2** | 0,5B | ~4–8 GB (kaynak) | iyi (streaming) | **~150 ms** | ❌ TR yok (zh/en/ja/ko/yue) → finetune | Apache-2.0 |
 | **CosyVoice 3** (Fun-CosyVoice3-0.5B) | 0,5B (1,5B **açık değil**) | ~4–10 GB (kaynak) | **SOTA (0,5B'de)** | **~150 ms** | ❌ **TR yok** (9 dil: zh/en/ja/ko/de/es/fr/it/ru) → finetune | Apache-2.0 |
 | **OmniVoice** | 0,81B | **~2,3 GB** (fp16) | **~0,04** (L40S) / ~0,025 (H100) | NAR (batch) | ✅ (600+ dil) | Apache-2.0 |
