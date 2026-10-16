@@ -49,6 +49,13 @@ adil kıyaslandı (referans ASCII, model doğru Türkçe üretti).
 **Yorum:** Genelde **anlaşılır** ve doğru Türkçe (diakritikler dahil), ancak tek tek sözcüklerde
 telaffuz bozulmaları olabiliyor. Kulakla doğallık değerlendirmesi kullanıcıya bırakılır.
 
+> ⚠️ **Kritik uyarı:** Bu örneklerin **girdi metni ASCII** idi (`bugun`, `nasil`, `yardimci`,
+> `calisan`) ve ikinci örnekte `guneşli` konsol kodlamasından geçti. Yani bunlar **diakritik işleme
+> testi değildir**. Adil bir Türkçe testi için metin **`ı ş ğ ü ö ç`** ile (UTF-8) verilmeli ve
+> Windows'ta `--text` yerine **`--text-file`** kullanılmalıdır (PowerShell argümanı bozar).
+> Chatte "Trendyol da aynı sorunu yaşıyor" gözlemi bu yüzden büyük olasılıkla **girdi kaynaklı**;
+> doğru Türkçe metin + A/B ile doğrulanmalı (bkz. [`tts-kiyaslama.md`](tts-kiyaslama.md) §9).
+
 ## 4. Sonuç / karar
 
 | Boyut | Değerlendirme |

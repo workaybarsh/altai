@@ -160,6 +160,45 @@ devreye girmemiş olabilir** (VoxCPM FAQ), saf eager moda düşme; (c) 5060 Ti, 
 vurgu yanlış yere kayıyor. Türkçe'nin **sondan eklemeli** yapısı ve telaffuz kuralları (yumuşak ğ,
 noktasız ı, ünlü uyumu) grafem modelinde bozuluyor.
 
+**Kök neden (kod düzeyinde, doğrulandı):** `chatterbox` çok dilli tokenizer'ı
+(`MTLTokenizer.preprocess_text`) metne **her zaman `NFKD`** uygular; `generate()` bunu
+`nfkd_normalize=False` ile **kapatmaz**. NFKD, `ş/ğ/ü/ö/ç`'yi *taban harf + birleşen işaret*e ayırır
+(`ş`→`s`+U+0327, `ü`→`u`+U+0308). Sözlükte bu birleşen işaretler yoksa **diakritik kaybolur**
+(`ş`→`s`, `ü`→`u`). Ayrıca `lower()` Türkçe-duyarsızdır (`I`→`i`, `İ`→`i`+nokta). Dış kayıt:
+`jamiepine/voicebox` **#846** — *"Incorrect pronunciation of Turkish vowels (ı, ö, ü)"*.
+
+**Uygulanan yama (offline, test edildi):** `agent/tts-tools.py` → `install_tr_tokenizer_fix()` +
+`tr_lower()`. `--backend chatterbox --lang tr --chatterbox-tr-fix` ile TR için **NFKD kapatılır**
+(NFC/precomposed korunur) ve **Türkçe küçültme** uygulanır; diğer diller etkilenmez.
+`python -m pytest -q` → **19 test** (2 yeni). ⏳ Etki (ses) **GPU boşken** ölçülecek.
+
+> 📌 Aynı kaynakta bir kullanıcı, **XTTS-v2**'nin Türkçede Chatterbox'tan **belirgin daha iyi**
+> olduğunu bildiriyor (ı/ö/ü + kelime ayrımı + prozodi). XTTS-v2'yi (ticari dışı lisans, CPU'da
+> yavaş) TR için **yeniden değerlendirmek** gerekebilir.
+
+### 9.1 GPU boşken çalıştırılacak A/B planı
+
+Amaç: "sorun girdi mi (ASCII), motor mu (tokenizer), yama mı çözüyor?" Aynı cümle, 4 koşul:
+
+```powershell
+# metinler (UTF-8, --text-file ile) :
+#  A) dogru TR : "Merhaba! Ben tamamen yerel çalışan bir sesli asistanım. Bugün size nasıl yardımcı olabilirim?"
+#  B) ASCII    : "Merhaba! Ben tamamen yerel calisan bir sesli asistanim. Bugun size nasil yardimci olabilirim?"
+
+$py = "$env:TEMP\opencode\tts-venv\Scripts\python.exe"
+# 1) dogru TR + yama
+& $py agent\tts-tools.py --backend chatterbox --lang tr --chatterbox-tr-fix --text-file logs\tts\ab-tr.txt  --out logs\tts\cb-tr-fix.wav
+# 2) dogru TR + yamasiz
+& $py agent\tts-tools.py --backend chatterbox --lang tr                      --text-file logs\tts\ab-tr.txt  --out logs\tts\cb-tr-raw.wav
+# 3) ASCII + yama
+& $py agent\tts-tools.py --backend chatterbox --lang tr --chatterbox-tr-fix --text-file logs\tts\ab-ascii.txt --out logs\tts\cb-ascii-fix.wav
+```
+
+Sonra her WAV'ı **Whisper geri-çevirimi + WER** ile ölç (bkz. `docs/tts-tr-sonuc.md` §3 yöntemi) ve
+kulakla dinle. Beklenti: **(1) ≫ (2)** ise yama çalışıyor; **(1) ≈ (3)** ise sorun yalnız girdiydi.
+
+> ⚠️ Ön koşul: Chatterbox ağırlıkları ilk çalıştırmada indirilir (~2 GB, `ResembleAI/chatterbox`).
+
 **Çözüm yolları (kolaydan ağıra):**
 
 | Yol | Ne yapar | Emek | Beklenti |

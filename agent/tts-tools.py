@@ -43,6 +43,41 @@ def _read_text(args) -> str:
     return (args.text or "").strip()
 
 
+# ------------------------------------------------------------------ Turkce metin (Chatterbox icin)
+
+_TR_UPPER_TO_LOWER = str.maketrans({"I": "ı", "İ": "i"})
+
+
+def tr_lower(s: str) -> str:
+    """Turkce'ye duyarli kucultme: 'I'->'ı' (noktasiz), 'İ'->'i'."""
+    return s.translate(_TR_UPPER_TO_LOWER).lower()
+
+
+def install_tr_tokenizer_fix(tokenizer):
+    """Chatterbox cok dilli tokenizer'inda TR on-islemesini duzeltir.
+
+    Kok neden: `MTLTokenizer.preprocess_text` metne her zaman `NFKD` uygular; bu,
+    'ş/ğ/ü/ö/ç' harflerini taban harf + birlesen isarete ayirir (ör. 'ş' -> 's'+cedilla).
+    Tokenizer sozlugunde bu birlesen isaretler yoksa diakritik kaybolur ('ş'->'s',
+    'ü'->'u'). Ayrica `lower()` Turkce'ye duyarsizdir ('I'->'i', 'İ'->'i'+nokta).
+
+    Bu yama, `language_id='tr'` icin NFKD'yi KAPATIR (harfleri NFC/precomposed tutar) ve
+    Turkce kucultme uygular. Diger diller icin orijinal davranis korunur.
+    """
+    import unicodedata
+    orig = tokenizer.preprocess_text
+
+    def _pre(raw_text, language_id=None, lowercase=True, nfkd_normalize=True):
+        if (language_id or "").lower() == "tr":
+            t = tr_lower(raw_text) if lowercase else raw_text
+            return unicodedata.normalize("NFC", t)  # NFKD YOK: birlesik harfleri koru
+        return orig(raw_text, language_id=language_id, lowercase=lowercase,
+                    nfkd_normalize=nfkd_normalize)
+
+    tokenizer.preprocess_text = _pre
+    return tokenizer
+
+
 # ------------------------------------------------------------------ chatterbox
 
 def _save_wav(wav, path, sr):
@@ -63,7 +98,7 @@ def _save_wav(wav, path, sr):
 
 
 def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
-                     exaggeration=0.5, cfg=0.5, t3_model="v3", seed=None):
+                     exaggeration=0.5, cfg=0.5, t3_model="v3", seed=None, tr_fix=False):
     import torch
 
     if seed is not None:
@@ -80,6 +115,10 @@ def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
     else:
         from chatterbox.tts import ChatterboxTTS
         model = ChatterboxTTS.from_pretrained(device=device)
+
+    if tr_fix and (lang or "").lower() == "tr":
+        # TR diakritik/sorun: tokenizer NFKD+kucultme yamasini uygula (bkz. ust fonksiyon)
+        install_tr_tokenizer_fix(model.tokenizer)
 
     kwargs = {}
     if voice_prompt:
@@ -203,6 +242,8 @@ def main(argv=None) -> int:
     ap.add_argument("--exaggeration", type=float, default=0.5)
     ap.add_argument("--cfg", type=float, default=0.5)
     ap.add_argument("--t3-model", default="v3", help="chatterbox coklu dil checkpoint: v3 | v2")
+    ap.add_argument("--chatterbox-tr-fix", action="store_true",
+                    help="chatterbox TR: tokenizer NFKD/kucultme yamasini uygula (diakritik sorunu)")
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--voxcpm-model", default="Trendyol/Trendyol-TTS", help="voxcpm HF model id")
     ap.add_argument("--voxcpm-cfg", type=float, default=2.0)
@@ -221,7 +262,8 @@ def main(argv=None) -> int:
     try:
         if args.backend == "chatterbox":
             res = synth_chatterbox(text, args.out, args.lang, args.voice_prompt, args.device,
-                                   args.exaggeration, args.cfg, args.t3_model, args.seed)
+                                   args.exaggeration, args.cfg, args.t3_model, args.seed,
+                                   args.chatterbox_tr_fix)
         elif args.backend == "voxcpm":
             res = synth_voxcpm(text, args.out, args.voxcpm_model, args.voxcpm_cfg,
                                args.voxcpm_steps, args.device, not args.no_optimize)

@@ -19,6 +19,9 @@ Repo: `github.com/workaybarsh/aybars_says`
 - **Bağımsız TR TTS kıyası** (arXiv:2610.06057) işlendi: Chatterbox TR'de hiçbir metriği kazanmıyor,
   kısa cümlede çöküyor; VoxCPM2 klon/kararlılık, CosyVoice doğallık lideri (karar #17,
   `docs/tts-kiyaslama.md`)
+- **Chatterbox TR düzeltmesi (kod):** kök neden tokenizer'ın her zaman `NFKD` uygulaması +
+  Türkçe-duyarsız `lower()`; `install_tr_tokenizer_fix()` yazıldı, `--chatterbox-tr-fix` eklendi
+  (**19 test**). Ses etkisi GPU boşken ölçülecek (karar #18, `docs/tts-kiyaslama.md` §9)
 - Testler: `python -m pytest -q` → **17 test** geçiyor
 
 ## Önemli kararlar (özet)

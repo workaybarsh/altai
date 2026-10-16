@@ -54,3 +54,23 @@ def test_voxcpm_missing_dependency_reports_error(tmp_path, capsys):
     assert code == 3
     assert payload["ok"] is False
     assert payload["backend"] == "voxcpm"
+
+
+def test_tr_lower_is_turkish_aware():
+    assert tts.tr_lower("İSTANBUL IĞDIR") == "istanbul ığdır"
+
+
+def test_install_tr_tokenizer_fix_keeps_precomposed():
+    import unicodedata
+
+    class FakeTok:
+        def preprocess_text(self, raw_text, language_id=None, lowercase=True, nfkd_normalize=True):
+            t = raw_text.lower() if lowercase else raw_text
+            return unicodedata.normalize("NFKD", t) if nfkd_normalize else t
+
+    tok = tts.install_tr_tokenizer_fix(FakeTok())
+    tr = tok.preprocess_text("ŞÜĞÖÇ IĞDIR", language_id="tr")
+    assert "ş" in tr and "ü" in tr and "ı" in tr          # diakritikler korunur
+    assert "\u0308" not in tr and "\u0327" not in tr      # NFKD ile ayrismaz
+    en = tok.preprocess_text("Ş", language_id="en")       # tr disi: orijinal NFKD
+    assert "\u0327" in en
