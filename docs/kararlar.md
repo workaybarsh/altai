@@ -4,6 +4,8 @@ Her karar: **ne**, **neden**, **alternatifler**. En yeni üstte.
 
 | # | Tarih | Karar | Gerekçe | Alternatifler (neden değil) |
 |---|---|---|---|---|
+| 15 | 2026-10-16 | **Fish S2 Pro yalnızca İZOLE WSL denemesi** — projeye entegre edilmez | Merak/karşılaştırma amaçlı; **Fish Audio Research License (ticari dışı)**, yalnız Linux/WSL, 24 GB önerilir. Proje MIT/cross-platform kalmalı | Projeye almak (lisans + Windows dışı + VRAM çakışması → reddedildi) |
+| 14 | 2026-10-16 | TTS = **Chatterbox Multilingual v3** (proje birincil) | Gerçekçi (ElevenLabs'ı geçiyor), **Türkçe**, **MIT lisans**, 5 sn klonlama, 0,5B → CPU/GPU esnek; `agent/tts-tools.py` ile sarmalandı | Fish S2 Pro (lisans+WSL), Piper (robotik), XTTS-v2 (eskimiş) |
 | 13 | 2026-10-16 | **MTP zorunlu + enjeksiyonla geri eklenir** | Quant GGUF MTP/`nextn` içermez (doğrulandı: hedefte 0, kaynakta 15 tensor); MTP olmadan `--spec-type draft-mtp` sunucuyu açmaz | MTP kapalı (~2x yavaş), MTP'li custom GGUF üretmek (zahmetli, kırılgan) |
 | 12 | 2026-10-16 | LLM = **Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** (imatrix GGUF) | imatrix quant aynı boyutta daha iyi kalite verir; net HF kaynağı (`mradermacher/Huihui-Qwen3.5-9B-abliterated-i1-GGUF`); Q5_K_M ~6,6 GB | Orijinal `huihui-ai` (static) Q5_K_M (imatrix'e göre biraz daha zayıf), Q4 (kalite kaybı) |
 | 11 | 2026-10-16 | STT = **whisper.cpp** (`large-v3-turbo`) | Olgun, çok dilli, olgun C/C++ ekosistem, CPU'da hızlı (~0,2–0,4 sn); CUDA'sız iyi performans | Qwen3-ASR-1.7B (Türkçe+akışlı idi ama CPU'da yavaş), `large-v3` (yavaş) |
@@ -35,6 +37,7 @@ Planlama sırasında masaya gelip vazgeçilen seçenekler (kayıt için; en yeni
 | STT | whisper `large-v3` (tam) | CPU'da yavaş; `<1 sn` hedefini tek başına yer (turbo tercih edildi) |
 | LLM | Orijinal `huihui-ai` **static** Q5_K_M | Çalışır ama imatrix (i1) quant aynı boyutta daha iyi kalite verir → #12 |
 | LLM | Qwen 3.5 **27B** (MamidLabs MAX/FLASH) | 8 GB VRAM'e sığmaz |
+| TTS | **Fish Audio S2 Pro** (4.4B) | En gerçekçi ve Türkçe destekli, **ama** Fish Audio Research License (ticari dışı), yalnız Linux/WSL ve 24 GB önerilir → projeye uymaz. **Yalnızca izole WSL denemesi** olarak kalır (karar #15). |
 | TTS | **Kokoro-82M** | Türkçe desteklemiyor |
 | TTS | **F5-TTS** | Sadece İngilizce/Çince |
 | TTS | **XTTS-v2** | Daha eski; ticari dışı lisans + CPU'da yavaş (Chatterbox v3 daha yeni ve doğal) |
@@ -47,6 +50,7 @@ Planlama sırasında masaya gelip vazgeçilen seçenekler (kayıt için; en yeni
   testleri: [`mtp-dogrulama.md`](mtp-dogrulama.md). *(Karar #13.)*
 - [ ] MTP enjeksiyonu sonrası 8 GB VRAM'e sığıyor mu (gerçek ölçüm)?
 - [ ] STT: **`large-v3-turbo`** yeterli mi, `medium`/`small`'a mı inilmeli (Faz 2 ölçümü)
-- [ ] TTS birincil motoru: **Chatterbox v3** (gerçekçi, GPU) mı **Piper** (hızlı, CPU) mı
+- [x] TTS birincil = **Chatterbox Multilingual v3**; Fish S2 Pro yalnızca izole WSL denemesi. *(Kararlar #14, #15.)*
+- [ ] TTS nerede çalışacak: GPU (gerçekçi, LLM'i Q4'e iter) mi CPU (Piper, robotik) mi? "İki mod" öneriliyor
 - [ ] Akışlı ASR penceresi / VAD eşiği kesinleşmesi
 - [ ] Proje lisans metni

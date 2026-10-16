@@ -131,6 +131,8 @@ Ses → yazı, **whisper.cpp** ile yapılır (Qwen3-ASR kullanılmaz).
 - Varsayılan **Chatterbox v3**; GPU'da ~2–3 GB → LLM Q4 ile ~8 GB (ölçüm şart).
 - GPU sıkışırsa **Piper** (CPU) canlı moda düşer.
 - Chatterbox çıktıları PerTh filigranı taşır (MIT, duyulmaz) — engel değil.
+- **Projeye dahil değil:** **Fish Audio S2 Pro** yalnızca izole WSL denemesidir (ticari dışı lisans,
+  yalnız Linux/WSL, 24 GB) — bkz. [`kararlar.md`](kararlar.md) karar #15.
 
 ## 7. Kaynak bütçesi (8 GB VRAM)
 
