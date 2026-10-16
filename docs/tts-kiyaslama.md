@@ -117,7 +117,8 @@ Sesli asistan tipik olarak **kısa** yanıt üretir (0–50 karakter). Paper'ın
 |---|---|---|---|---|---|---|
 | **Chatterbox Multilingual v3** | 0,5B | **~2 GB** (min) – ~4 GB | **~0,05–0,2** | var (chunked) | ✅ (ama diakritik hatası) | **MIT** |
 | **VoxCPM2** (→ Trendyol-TTS) | 2B (2,3B) | ~5 (bf16) – ~8 GB | ~0,30 (4090) / ~0,13 Nano-vLLM | var (chunk) | ✅ | Apache-2.0 |
-| **CosyVoice 2** | 0,5B | ~6–8 GB (kaynak) | iyi (streaming) | **~150 ms** | ⚠️ 2'de yok (CosyVoice 3 / finetune gerek) | Apache-2.0 |
+| **CosyVoice 2** | 0,5B | ~4–8 GB (kaynak) | iyi (streaming) | **~150 ms** | ❌ TR yok (zh/en/ja/ko/yue) → finetune | Apache-2.0 |
+| **CosyVoice 3** (Fun-CosyVoice3-0.5B) | 0,5B (1,5B **açık değil**) | ~4–10 GB (kaynak) | **SOTA (0,5B'de)** | **~150 ms** | ❌ **TR yok** (9 dil: zh/en/ja/ko/de/es/fr/it/ru) → finetune | Apache-2.0 |
 | **OmniVoice** | 0,81B | **~2,3 GB** (fp16) | **~0,04** (L40S) / ~0,025 (H100) | NAR (batch) | ✅ (600+ dil) | Apache-2.0 |
 
 Kaynaklar: VoxCPM2 README/teknik rapor (arXiv:2606.06928) + voxcpm.readthedocs; OmniVoice makalesi
@@ -127,6 +128,13 @@ değişir; **kesin değer kendi kartımızda ölçülmeli**.
 
 **Chatterbox öne çıkıyor:** en küçük (0,5B), **en az VRAM (~2 GB)**, MIT, ve RTF <1 (gerçek zamandan
 hızlı). Bizim gözlemimizle tutarlı: **kalite iyi**, tek sorun Türkçe karakterler.
+
+**CosyVoice 3 (2025-05, arXiv:2505.17589):** 0,5B açık (**1,5B yalnız makalede — ağırlık yok**),
+Apache-2.0, **native streaming ~150 ms**, 25 Hz, TensorRT-LLM ile ~4×. 0,5B için SOTA kalite
+(test-zh CER 1,21 / test-en WER 2,24). **Ama resmî diller 9 tane** (zh/en/ja/ko/de/es/fr/it/ru + 18
+Çince diyalekt) → **Türkçe YOK** (GitHub **#1904** ile talep ediliyor). TR için **finetune şart**;
+Sestek benchmark'ı da CosyVoice'u **finetune** ederek TR'de doğallık lideri yapmıştı. Yani
+**zero-shot TR motoru değil**, ama "TR için finetune edilecek en güçlü aday".
 
 ### 8.1 VoxCPM2 RTF uyumsuzluğu (önemli açık soru)
 
