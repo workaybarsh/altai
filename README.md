@@ -119,6 +119,7 @@ orada ölçülür (`large-v3-turbo` yeterli mi, `medium`/`small`'a mı inilmeli)
 | [`docs/faz2-olcum-plani.md`](docs/faz2-olcum-plani.md) | Faz 2: whisper.cpp hattı ve `<1 sn` ölçüm planı |
 | [`docs/faz2-sonuc.md`](docs/faz2-sonuc.md) | Faz 2 ölçüm sonuçları (duman testi kaydı) |
 | [`docs/tts-tr-sonuc.md`](docs/tts-tr-sonuc.md) | Türkçe TTS (Trendyol-TTS) değerlendirmesi: VRAM, RTF, geri-çevirim WER |
+| [`docs/tts-kiyaslama.md`](docs/tts-kiyaslama.md) | Türkçe TTS kıyası (Chatterbox vs CosyVoice/OmniVoice/VoxCPM2/VITS; arXiv:2610.06057) |
 | [`docs/kararlar.md`](docs/kararlar.md) | Karar günlüğü |
 | [`AGENTS.md`](AGENTS.md) | Geliştirici/ajan altyapı rehberi |
 

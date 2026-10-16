@@ -16,6 +16,9 @@ Repo: `github.com/workaybarsh/aybars_says`
 - **TTS-TR değerlendirmesi:** **Trendyol-TTS** ölçüldü (VRAM ~5,6 GB, RTF ~3, geri-çevirim
   Whisper WER ~0,08) → canlı hat için ağır; **çevrimdışı motor** olarak eklendi (karar #16,
   `docs/tts-tr-sonuc.md`)
+- **Bağımsız TR TTS kıyası** (arXiv:2610.06057) işlendi: Chatterbox TR'de hiçbir metriği kazanmıyor,
+  kısa cümlede çöküyor; VoxCPM2 klon/kararlılık, CosyVoice doğallık lideri (karar #17,
+  `docs/tts-kiyaslama.md`)
 - Testler: `python -m pytest -q` → **17 test** geçiyor
 
 ## Önemli kararlar (özet)

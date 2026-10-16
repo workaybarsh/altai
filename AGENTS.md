@@ -128,6 +128,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 
 | Tarih | Değişiklik | Dosyalar |
 |---|---|---|
+| 2026-10-16 | **Bağımsız Türkçe TTS kıyası işlendi** (arXiv:2610.06057, Sestek): Chatterbox vs CosyVoice/OmniVoice/VoxCPM2/VITS. Chatterbox hiçbir metriği kazanmıyor + kısa cümlede çöküyor; VoxCPM2 klon/kararlılık, CosyVoice doğallık lideri. Karar #17. | docs/tts-kiyaslama.md, docs/kararlar.md, DURUM.md, README.md, AGENTS.md |
 | 2026-10-16 | **Türkçe TTS değerlendirildi + `voxcpm` backend eklendi.** Trendyol-TTS (VoxCPM2 + TR LoRA) ölçüldü: ~5,6 GB VRAM, RTF ~3, geri-çevirim Whisper WER ~0,08 → **anlaşılır ama canlı hat için ağır**; çevrimdışı motor olarak `tts-tools.py`'ye eklendi. Testler 17'ye çıktı. | agent/tts-tools.py, tests/test_tts_tools.py, docs/tts-tr-sonuc.md, docs/kararlar.md, DURUM.md, README.md, AGENTS.md, docs/mimari.md |
 | 2026-10-16 | **Faz 2 ASR hattı iskeleti eklendi** (`asr-tools.py`, `asr-olcum.ps1`) ve **gerçek whisper.cpp ile uçtan uca doğrulandı** (base.en, CPU, RTF ~0,19). Testler 13'e çıktı. | agent/asr-tools.py, scripts/asr-olcum.ps1, tests/, docs/faz2-olcum-plani.md, AGENTS.md |
 | 2026-10-16 | **İlk çalışan araç eklendi:** `agent/mtp_inject.py` (kanıtlı) + `scripts/mtp-dogrula.ps1` durum/enjeksiyon betiği. Depo "sesli" olarak işaretlendi. | agent/mtp_inject.py, scripts/mtp-dogrula.ps1, README.md, AGENTS.md |

@@ -4,6 +4,7 @@ Her karar: **ne**, **neden**, **alternatifler**. En yeni üstte.
 
 | # | Tarih | Karar | Gerekçe | Alternatifler (neden değil) |
 |---|---|---|---|---|
+| 17 | 2026-10-16 | **Bağımsız Türkçe TTS kanıtı işlendi** (arXiv:2610.06057, Sestek): Chatterbox TR'de **hiçbir metriği kazanmıyor** ve **kısa cümlede çöküyor**; **VoxCPM2** klon/benar./uzun-form kararlılık lideri, **CosyVoice** doğallık lideri, **OmniVoice(ZS)** anlaşılırlık lideri | Chatterbox'ın TR zayıflığını objektif doğruluyor; TR için VoxCPM2 ailesi (→ Trendyol) + CosyVoice öne çıkıyor. Ayrıntı: [`tts-kiyaslama.md`](tts-kiyaslama.md) | — (kanıt kaydı) |
 | 16 | 2026-10-16 | TTS-TR: **Trendyol-TTS** (`openbmb/VoxCPM2` + TR LoRA, MIT, ~2B) **cevrimdisi/yuksek-kalite TR motoru** olarak eklendi (`tts-tools.py --backend voxcpm`). **Canli `<1 sn` hattinin varsayilani DEGIL** | TR native ve **anlasilir** (geri-ceviri Whisper WER ~0,08, 2026-10-16). Ama **agir**: ~5,6 GB VRAM + RTF ~3 (gercek zamandan ~3x yavas) → 8 GB kartta yerlesik 9B LLM ile sigmaz ve `<1 sn` hedefini yer | Canli hatta birincil yapmak (VRAM + gecikme → reddedildi); Piper (CPU hizli ama robotik); CosyVoice2 / XTTS-v2 (bkz. acik kararlar) |
 | 15 | 2026-10-16 | **Fish S2 Pro yalnizca IZOLE WSL denemesi** — projeye entegre edilmez | Merak/karşılaştırma amaçlı; **Fish Audio Research License (ticari dışı)**, yalnız Linux/WSL, 24 GB önerilir. Proje MIT/cross-platform kalmalı | Projeye almak (lisans + Windows dışı + VRAM çakışması → reddedildi) |
 | 14 | 2026-10-16 | TTS = **Chatterbox Multilingual v3** (Ingilizce icin birincil) | Gerçekçi (ElevenLabs'ı geçiyor), **MIT lisans**, 5 sn klonlama, 0,5B → CPU/GPU esnek; `agent/tts-tools.py` ile sarmalandı. ⚠️ **Türkçe çıktısı zayıf → bkz. #16** | Fish S2 Pro (lisans+WSL), Piper (robotik), XTTS-v2 (eskimiş) |
@@ -55,6 +56,6 @@ Planlama sırasında masaya gelip vazgeçilen seçenekler (kayıt için; en yeni
 - [ ] STT: **`large-v3-turbo`** yeterli mi, `medium`/`small`'a mı inilmeli (Faz 2 ölçümü)
 - [x] TTS birincil = **Chatterbox Multilingual v3** (EN). TR = **Trendyol-TTS** çevrimdışı/yüksek-kalite motoru (`tts-tools.py --backend voxcpm`); Fish S2 Pro yalnızca izole WSL denemesi. *(Kararlar #14, #15, #16.)*
 - [ ] **Canlı TR TTS** hâlâ açık: Piper (CPU, hızlı ama robotik) mi, yoksa GPU'ya alınan yüksek-kalite motor (LLM'i küçültür/boşaltır) mu? "İki mod" öneriliyor. Trendyol-TTS canlı için elendi (RTF ~3, ~5,6 GB VRAM)
-- [ ] TR TTS kalitesi: CosyVoice2 / XTTS-v2 / ince-ayar adayları karşılaştırılmalı (aynı WER + kulak testi)
+- [ ] **Canlı TR adayları:** bağımsız kanıta göre (arXiv:2610.06057) **CosyVoice** (doğallık + uzunluk-dayanıklı) öncelikli, ardından **OmniVoice(ZS)** (anlaşılırlık). İkisinin de **RTF + VRAM**'i ölçülmeli. Ayrıntı: [`tts-kiyaslama.md`](tts-kiyaslama.md)
 - [ ] Akışlı ASR penceresi / VAD eşiği kesinleşmesi
 - [ ] Proje lisans metni
