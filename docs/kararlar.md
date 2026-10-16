@@ -4,8 +4,9 @@ Her karar: **ne**, **neden**, **alternatifler**. En yeni üstte.
 
 | # | Tarih | Karar | Gerekçe | Alternatifler (neden değil) |
 |---|---|---|---|---|
-| 15 | 2026-10-16 | **Fish S2 Pro yalnızca İZOLE WSL denemesi** — projeye entegre edilmez | Merak/karşılaştırma amaçlı; **Fish Audio Research License (ticari dışı)**, yalnız Linux/WSL, 24 GB önerilir. Proje MIT/cross-platform kalmalı | Projeye almak (lisans + Windows dışı + VRAM çakışması → reddedildi) |
-| 14 | 2026-10-16 | TTS = **Chatterbox Multilingual v3** (proje birincil) | Gerçekçi (ElevenLabs'ı geçiyor), **Türkçe**, **MIT lisans**, 5 sn klonlama, 0,5B → CPU/GPU esnek; `agent/tts-tools.py` ile sarmalandı | Fish S2 Pro (lisans+WSL), Piper (robotik), XTTS-v2 (eskimiş) |
+| 16 | 2026-10-16 | TTS-TR: **Trendyol-TTS** (`openbmb/VoxCPM2` + TR LoRA, MIT, ~2B) **cevrimdisi/yuksek-kalite TR motoru** olarak eklendi (`tts-tools.py --backend voxcpm`). **Canli `<1 sn` hattinin varsayilani DEGIL** | TR native ve **anlasilir** (geri-ceviri Whisper WER ~0,08, 2026-10-16). Ama **agir**: ~5,6 GB VRAM + RTF ~3 (gercek zamandan ~3x yavas) → 8 GB kartta yerlesik 9B LLM ile sigmaz ve `<1 sn` hedefini yer | Canli hatta birincil yapmak (VRAM + gecikme → reddedildi); Piper (CPU hizli ama robotik); CosyVoice2 / XTTS-v2 (bkz. acik kararlar) |
+| 15 | 2026-10-16 | **Fish S2 Pro yalnizca IZOLE WSL denemesi** — projeye entegre edilmez | Merak/karşılaştırma amaçlı; **Fish Audio Research License (ticari dışı)**, yalnız Linux/WSL, 24 GB önerilir. Proje MIT/cross-platform kalmalı | Projeye almak (lisans + Windows dışı + VRAM çakışması → reddedildi) |
+| 14 | 2026-10-16 | TTS = **Chatterbox Multilingual v3** (Ingilizce icin birincil) | Gerçekçi (ElevenLabs'ı geçiyor), **MIT lisans**, 5 sn klonlama, 0,5B → CPU/GPU esnek; `agent/tts-tools.py` ile sarmalandı. ⚠️ **Türkçe çıktısı zayıf → bkz. #16** | Fish S2 Pro (lisans+WSL), Piper (robotik), XTTS-v2 (eskimiş) |
 | 13 | 2026-10-16 | **MTP zorunlu + enjeksiyonla geri eklenir** | Quant GGUF MTP/`nextn` içermez (doğrulandı: hedefte 0, kaynakta 15 tensor); MTP olmadan `--spec-type draft-mtp` sunucuyu açmaz | MTP kapalı (~2x yavaş), MTP'li custom GGUF üretmek (zahmetli, kırılgan) |
 | 12 | 2026-10-16 | LLM = **Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** (imatrix GGUF) | imatrix quant aynı boyutta daha iyi kalite verir; net HF kaynağı (`mradermacher/Huihui-Qwen3.5-9B-abliterated-i1-GGUF`); Q5_K_M ~6,6 GB | Orijinal `huihui-ai` (static) Q5_K_M (imatrix'e göre biraz daha zayıf), Q4 (kalite kaybı) |
 | 11 | 2026-10-16 | STT = **whisper.cpp** (`large-v3-turbo`) | Olgun, çok dilli, olgun C/C++ ekosistem, CPU'da hızlı (~0,2–0,4 sn); CUDA'sız iyi performans | Qwen3-ASR-1.7B (Türkçe+akışlı idi ama CPU'da yavaş), `large-v3` (yavaş) |
@@ -38,6 +39,8 @@ Planlama sırasında masaya gelip vazgeçilen seçenekler (kayıt için; en yeni
 | LLM | Orijinal `huihui-ai` **static** Q5_K_M | Çalışır ama imatrix (i1) quant aynı boyutta daha iyi kalite verir → #12 |
 | LLM | Qwen 3.5 **27B** (MamidLabs MAX/FLASH) | 8 GB VRAM'e sığmaz |
 | TTS | **Fish Audio S2 Pro** (4.4B) | En gerçekçi ve Türkçe destekli, **ama** Fish Audio Research License (ticari dışı), yalnız Linux/WSL ve 24 GB önerilir → projeye uymaz. **Yalnızca izole WSL denemesi** olarak kalır (karar #15). |
+| TTS | **Trendyol-TTS** canlı hatta **birincil** | TR native ve anlaşılır (geri-çevirim WER ~0,08) **ama** ~5,6 GB VRAM + RTF ~3 → 8 GB kartta yerleşik 9B LLM ile sığmaz ve `<1 sn` hedefini yer. **Çevrimdışı/yüksek-kalite motoru olarak alındı** (karar #16); canlı hat için uygun değil |
+| TTS | **CosyVoice2**, **XTTS-v2** | TR destekli ama GPU/CPU'da yavaş; canlı `<1 sn` hattında riskli (yedek adaylar, karar #16) |
 | TTS | **Kokoro-82M** | Türkçe desteklemiyor |
 | TTS | **F5-TTS** | Sadece İngilizce/Çince |
 | TTS | **XTTS-v2** | Daha eski; ticari dışı lisans + CPU'da yavaş (Chatterbox v3 daha yeni ve doğal) |
@@ -50,7 +53,8 @@ Planlama sırasında masaya gelip vazgeçilen seçenekler (kayıt için; en yeni
   testleri: [`mtp-dogrulama.md`](mtp-dogrulama.md). *(Karar #13.)*
 - [ ] MTP enjeksiyonu sonrası 8 GB VRAM'e sığıyor mu (gerçek ölçüm)?
 - [ ] STT: **`large-v3-turbo`** yeterli mi, `medium`/`small`'a mı inilmeli (Faz 2 ölçümü)
-- [x] TTS birincil = **Chatterbox Multilingual v3**; Fish S2 Pro yalnızca izole WSL denemesi. *(Kararlar #14, #15.)*
-- [ ] TTS nerede çalışacak: GPU (gerçekçi, LLM'i Q4'e iter) mi CPU (Piper, robotik) mi? "İki mod" öneriliyor
+- [x] TTS birincil = **Chatterbox Multilingual v3** (EN). TR = **Trendyol-TTS** çevrimdışı/yüksek-kalite motoru (`tts-tools.py --backend voxcpm`); Fish S2 Pro yalnızca izole WSL denemesi. *(Kararlar #14, #15, #16.)*
+- [ ] **Canlı TR TTS** hâlâ açık: Piper (CPU, hızlı ama robotik) mi, yoksa GPU'ya alınan yüksek-kalite motor (LLM'i küçültür/boşaltır) mu? "İki mod" öneriliyor. Trendyol-TTS canlı için elendi (RTF ~3, ~5,6 GB VRAM)
+- [ ] TR TTS kalitesi: CosyVoice2 / XTTS-v2 / ince-ayar adayları karşılaştırılmalı (aynı WER + kulak testi)
 - [ ] Akışlı ASR penceresi / VAD eşiği kesinleşmesi
 - [ ] Proje lisans metni

@@ -3,6 +3,8 @@
 
 Backend'ler:
   - chatterbox : Resemble AI Chatterbox (Multilingual V3 dahil) -- birincil, en dogal
+  - voxcpm     : Trendyol-TTS (openbmb/VoxCPM2 + Turkce LoRA, MIT, ~2B) -- TR native,
+                 yuksek kalite ama AGIR (~5,6 GB VRAM, RTF ~3) -> cevrimdisi/yuksek kalite
   - piper      : hizli/CPU yedek (kurulu degilse durustce hata verir)
   - sapi       : Windows SAPI son care
 
@@ -12,6 +14,7 @@ Ornek:
   python agent/tts-tools.py --backend chatterbox --text "Merhaba dunya" --lang tr --out out.wav
   python agent/tts-tools.py --backend chatterbox --text "Hello" --out en.wav --device cuda
   python agent/tts-tools.py --backend chatterbox --text "..." --voice-prompt ref.wav --out clone.wav
+  python agent/tts-tools.py --backend voxcpm --text "Merhaba dunya" --out tr.wav --device cuda
 """
 from __future__ import annotations
 
@@ -106,6 +109,39 @@ def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
             "t3_model": t3_model if uses_mtl else None, "writer": writer}
 
 
+# ------------------------------------------------------------------ voxcpm (Trendyol-TTS, TR)
+
+def synth_voxcpm(text, out_wav, model_id="Trendyol/Trendyol-TTS", cfg=2.0, timesteps=16,
+                 device=None, optimize=True, load_denoiser=False, max_len=4096,
+                 normalize=True, denoise=False):
+    """VoxCPM2 tabanli TR TTS (Trendyol-TTS). TR native; MIT. AGIR (VRAM + RTF)."""
+    import soundfile as sf
+    from voxcpm.core import VoxCPM
+
+    t0 = time.perf_counter()
+    kwargs = {"hf_model_id": model_id, "load_denoiser": load_denoiser, "optimize": optimize}
+    if device:
+        kwargs["device"] = device
+    model = VoxCPM.from_pretrained(**kwargs)
+    load_s = time.perf_counter() - t0
+
+    t1 = time.perf_counter()
+    audio = model.generate(text=text, cfg_value=cfg, inference_timesteps=timesteps,
+                           max_len=max_len, normalize=normalize, denoise=denoise)
+    gen_s = time.perf_counter() - t1
+
+    sr = int(model.tts_model.sample_rate)
+    os.makedirs(os.path.dirname(os.path.abspath(out_wav)), exist_ok=True)
+    sf.write(out_wav, audio, sr)
+    with wave.open(out_wav, "rb") as w:
+        secs = w.getnframes() / float(w.getframerate() or 1)
+
+    return {"out": out_wav, "sample_rate": sr, "audio_seconds": round(secs, 3),
+            "load_seconds": round(load_s, 2), "tts_seconds": round(gen_s, 3),
+            "rtf": round((gen_s / secs) if secs else float("inf"), 3),
+            "model": model_id, "cfg": cfg, "inference_timesteps": timesteps}
+
+
 # ------------------------------------------------------------------ piper (yedek)
 
 def synth_piper(text, out_wav, model_path=None, piper_exe=None):
@@ -157,7 +193,7 @@ def synth_sapi(text, out_wav):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Takas edilebilir TTS (aybars_says)")
-    ap.add_argument("--backend", default="chatterbox", choices=["chatterbox", "piper", "sapi"])
+    ap.add_argument("--backend", default="chatterbox", choices=["chatterbox", "voxcpm", "piper", "sapi"])
     ap.add_argument("--text")
     ap.add_argument("--text-file")
     ap.add_argument("--out", required=True)
@@ -168,6 +204,10 @@ def main(argv=None) -> int:
     ap.add_argument("--cfg", type=float, default=0.5)
     ap.add_argument("--t3-model", default="v3", help="chatterbox coklu dil checkpoint: v3 | v2")
     ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--voxcpm-model", default="Trendyol/Trendyol-TTS", help="voxcpm HF model id")
+    ap.add_argument("--voxcpm-cfg", type=float, default=2.0)
+    ap.add_argument("--voxcpm-steps", type=int, default=16)
+    ap.add_argument("--no-optimize", action="store_true", help="voxcpm optimize kapat")
     ap.add_argument("--piper", default=None)
     ap.add_argument("--piper-model", default=None)
     ap.add_argument("--json-out", default=None)
@@ -182,6 +222,9 @@ def main(argv=None) -> int:
         if args.backend == "chatterbox":
             res = synth_chatterbox(text, args.out, args.lang, args.voice_prompt, args.device,
                                    args.exaggeration, args.cfg, args.t3_model, args.seed)
+        elif args.backend == "voxcpm":
+            res = synth_voxcpm(text, args.out, args.voxcpm_model, args.voxcpm_cfg,
+                               args.voxcpm_steps, args.device, not args.no_optimize)
         elif args.backend == "piper":
             res = synth_piper(text, args.out, args.piper_model, args.piper)
         else:

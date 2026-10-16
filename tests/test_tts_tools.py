@@ -37,3 +37,20 @@ def test_sapi_synthesizes_on_windows(tmp_path, capsys):
     assert payload["ok"] is True
     assert os.path.exists(out)
     assert payload["audio_seconds"] > 0
+
+
+def test_voxcpm_missing_dependency_reports_error(tmp_path, capsys):
+    """voxcpm kurulu degilse durustce ok=false doner (agir model indirmeyi tetiklemez)."""
+    import pytest
+    try:
+        import voxcpm  # noqa: F401
+    except Exception:
+        pass
+    else:
+        pytest.skip("voxcpm kurulu; agir model yuklemeyi tetiklememek icin atlanir")
+    out = tmp_path / "v.wav"
+    code = tts.main(["--backend", "voxcpm", "--text", "merhaba", "--out", str(out)])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 3
+    assert payload["ok"] is False
+    assert payload["backend"] == "voxcpm"

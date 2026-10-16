@@ -48,7 +48,7 @@ Mikrofon → VAD/kayıt → whisper.cpp (CPU) → metin
 |---|---|---|
 | **Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** + MTP | **GPU (8 GB)** | Yerel imatrix quant (~6,6 GB); boyut/kalite dengesi iyi; yerleşik kalır |
 | **whisper.cpp** (`large-v3-turbo`) | **CPU** | GPU'yu LLM'e bırakır; Türkçe + çok dilli, CPU'da hızlı, olgun C/C++ ekosistem |
-| TTS (Piper / Chatterbox / SAPI) | **CPU** | VRAM'e dokunmaz; takas edilebilir katman |
+| TTS (Piper / Chatterbox / VoxCPM / SAPI) | **CPU** | VRAM'e dokunmaz; takas edilebilir katman (VoxCPM/Trendyol ağır → çevrimdışı) |
 
 Bu projenin ayrı olmasının sebebi: mevcut çalışmada (MamidLabs) ComfyUI, OCR, mmproj gibi başka VRAM
 tüketicileri var. Burada **tek sahipli** bir hat kurulur.
@@ -72,7 +72,7 @@ tüketicileri var. Burada **tek sahipli** bir hat kurulur.
 | Etkileşim | Bas-konuş **ve** sürekli dinleme (ayardan seçilir) |
 | STT | **whisper.cpp** (`large-v3-turbo`; CPU) |
 | LLM | **Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** (imatrix), **MTP daima açık**, GPU'da yerleşik |
-| TTS | Takas edilebilir: Chatterbox Multilingual v3 (en gerçekçi) / Piper (hızlı) / SAPI |
+| TTS | Takas edilebilir: Chatterbox v3 (EN) / Trendyol-TTS `voxcpm` (TR, ağır → çevrimdışı) / Piper (hızlı) / SAPI |
 | Dil | Türkçe + İngilizce (iki sürüm) |
 | Kullanım | Kişisel / kapalı |
 | Hedef gecikme | < 1 sn |
@@ -118,9 +118,10 @@ orada ölçülür (`large-v3-turbo` yeterli mi, `medium`/`small`'a mı inilmeli)
 | [`docs/mtp-dogrulama.md`](docs/mtp-dogrulama.md) | MTP doğrulama + enjeksiyon planı (kabul testleri, yedekler) |
 | [`docs/faz2-olcum-plani.md`](docs/faz2-olcum-plani.md) | Faz 2: whisper.cpp hattı ve `<1 sn` ölçüm planı |
 | [`docs/faz2-sonuc.md`](docs/faz2-sonuc.md) | Faz 2 ölçüm sonuçları (duman testi kaydı) |
+| [`docs/tts-tr-sonuc.md`](docs/tts-tr-sonuc.md) | Türkçe TTS (Trendyol-TTS) değerlendirmesi: VRAM, RTF, geri-çevirim WER |
 | [`docs/kararlar.md`](docs/kararlar.md) | Karar günlüğü |
 | [`AGENTS.md`](AGENTS.md) | Geliştirici/ajan altyapı rehberi |
 
 ## Lisans
 
-Kişisel kullanım. (whisper.cpp MIT; LLM Llama/Qwen türevi; Chatterbox MIT.)
+Kişisel kullanım. (whisper.cpp MIT; LLM Llama/Qwen türevi; Chatterbox MIT; Trendyol-TTS/VoxCPM2 MIT.)

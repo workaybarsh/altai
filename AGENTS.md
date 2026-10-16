@@ -59,6 +59,20 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 > (thread ayarına bağlı). Uzun cümlede `<1 sn` sınırda; VAD bölütleme + parça paralelliği ile telafi
 > edilir. Gerekirse `medium`/`small`'a inilir. Faz 2'de ölçülür.
 
+### 3.3 TTS: takas edilebilir katman
+
+| Motor | Doğallık | Türkçe | Canlı hız | Lisans | Rol |
+|---|---|---|---|---|---|
+| **Chatterbox Multilingual v3** | En yüksek | ⚠️ zayıf | GPU | MIT | EN birincil |
+| **Trendyol-TTS** (`voxcpm`, VoxCPM2 + TR LoRA, ~2B) | Yüksek | ✅ anlaşılır | ❌ RTF ~3, ~5,6 GB VRAM | MIT | **TR çevrimdışı/yüksek kalite** |
+| **Piper** | Orta | ✅ | ✅ CPU | GPL-3.0 | Hızlı/yedek |
+| Windows SAPI | Düşük | ✅ | ✅ | — | Son çare |
+
+> **Ölçüldü (2026-10-16):** Trendyol-TTS Türkçe **anlaşılır** (geri-çevirim Whisper WER ~0,08) ama
+> ~5,6 GB VRAM + RTF ~3 → hedef 8 GB kartta yerleşik LLM ile sığmaz ve `<1 sn` hedefini yer.
+> Bu yüzden **canlı hattın varsayılanı değil**; `tts-tools.py --backend voxcpm` ile çevrimdışı
+> motor olarak eklendi (karar #16). Ayrıntı: [`docs/tts-tr-sonuc.md`](docs/tts-tr-sonuc.md).
+
 ## 4. Bileşen haritası
 
 ✅ = mevcut · ⬜ = hedef
@@ -72,7 +86,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 | ✅ | `scripts/mtp-dogrula.ps1` | MTP durumunu denetler; `-Inject` ile başlığı ekler |
 | ✅ | `agent/asr-tools.py` | 16 kHz mono dönüştürme + **whisper.cpp** çıkarımı + gecikme/RTF ölçümü |
 | ✅ | `scripts/asr-olcum.ps1` | Faz 2 ASR ölçüm koşum takımı (sarmalayıcı) |
-| ⬜ | `agent/tts-tools.py` | Takas edilebilir TTS: Chatterbox / Piper / SAPI |
+| ✅ | `agent/tts-tools.py` | Takas edilebilir TTS: Chatterbox / **voxcpm** (Trendyol-TTS, TR) / Piper / SAPI |
 | ⬜ | `agent/pipeline.ps1` | Boru hattı: ASR → LLM (akış) → cümle bölme → TTS |
 | ⬜ | `agent/audio-capture.ps1` | winmm `mciSendString` ile bağımlılıksız kayıt |
 | ✅ | `tests/` | pytest (MTP enjeksiyonu + ASR araçları) |
@@ -85,7 +99,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 | Endpoint | 0–200 ms | Bas-konuş = 0; VAD + ~200 ms eşik |
 | STT | ≤ 400 ms | whisper.cpp `large-v3-turbo` (gerekirse `medium`/`small`) |
 | LLM ilk token | ≤ 250 ms | Yerleşik model + KV prefix cache |
-| TTS ilk ses | ≤ 150 ms | Chatterbox/Piper, ilk cümlede |
+| TTS ilk ses | ≤ 150 ms | Chatterbox/Piper, ilk cümlede. **Trendyol-TTS (`voxcpm`) canlı için uygun değil** (RTF ~3, ~5,6 GB VRAM) — çevrimdışı/yüksek kalite |
 
 ## 6. Kritik tuzaklar
 
@@ -114,6 +128,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 
 | Tarih | Değişiklik | Dosyalar |
 |---|---|---|
+| 2026-10-16 | **Türkçe TTS değerlendirildi + `voxcpm` backend eklendi.** Trendyol-TTS (VoxCPM2 + TR LoRA) ölçüldü: ~5,6 GB VRAM, RTF ~3, geri-çevirim Whisper WER ~0,08 → **anlaşılır ama canlı hat için ağır**; çevrimdışı motor olarak `tts-tools.py`'ye eklendi. Testler 17'ye çıktı. | agent/tts-tools.py, tests/test_tts_tools.py, docs/tts-tr-sonuc.md, docs/kararlar.md, DURUM.md, README.md, AGENTS.md, docs/mimari.md |
 | 2026-10-16 | **Faz 2 ASR hattı iskeleti eklendi** (`asr-tools.py`, `asr-olcum.ps1`) ve **gerçek whisper.cpp ile uçtan uca doğrulandı** (base.en, CPU, RTF ~0,19). Testler 13'e çıktı. | agent/asr-tools.py, scripts/asr-olcum.ps1, tests/, docs/faz2-olcum-plani.md, AGENTS.md |
 | 2026-10-16 | **İlk çalışan araç eklendi:** `agent/mtp_inject.py` (kanıtlı) + `scripts/mtp-dogrula.ps1` durum/enjeksiyon betiği. Depo "sesli" olarak işaretlendi. | agent/mtp_inject.py, scripts/mtp-dogrula.ps1, README.md, AGENTS.md |
 | 2026-10-16 | **MTP doğrulandı ve zorunlu kılındı.** Hedef quant GGUF'ta MTP yok; kaynak 15 tensor mevcut; `mtp_inject.py` şart. Doğrulama + kabul testleri belgesi eklendi. | README.md, AGENTS.md, docs/mimari.md, docs/kararlar.md, docs/mtp-dogrulama.md |

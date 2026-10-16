@@ -71,7 +71,7 @@ sequenceDiagram
 | Endpoint | 0–200 ms | Bas-konuş = 0; VAD + ~200 ms eşik |
 | STT (whisper.cpp) | ≤ 400 ms | `large-v3-turbo`; gerekirse `medium`/`small` |
 | LLM ilk token | ≤ 250 ms | Yerleşik model + **KV prefix cache** |
-| TTS ilk ses | ≤ 150 ms | Chatterbox/Piper, ilk cümlede |
+| TTS ilk ses | ≤ 150 ms | Chatterbox/Piper, ilk cümlede (Trendyol-TTS/`voxcpm` canlı için uygun değil) |
 | Çalma tamponu | ~50 ms | Küçük tampon |
 
 > t₀ = son sözcük bitti · t₁ = ilk ses çıktı · Hedef `t₁ − t₀ < 1000 ms`
@@ -122,7 +122,8 @@ Ses → yazı, **whisper.cpp** ile yapılır (Qwen3-ASR kullanılmaz).
 
 | Motor | Doğallık | Türkçe | CPU'da gerçek zamanlı | Lisans | Rol |
 |---|---|---|---|---|---|
-| **Chatterbox Multilingual v3** | En yüksek | ✅ | ❌ (GPU ister) | MIT | **Birincil (gerçekçi)** |
+| **Chatterbox Multilingual v3** | En yüksek | ⚠️ zayıf | ❌ (GPU ister) | MIT | EN birincil (gerçekçi) |
+| **Trendyol-TTS** (`voxcpm`; VoxCPM2 + TR LoRA) | Yüksek | ✅ anlaşılır | ❌ (GPU'da bile RTF ~3) | MIT | **TR çevrimdışı/yüksek kalite** |
 | **Piper** | Orta | ✅ | ✅ | GPL-3.0 | Hızlı/yedek |
 | XTTS-v2 | Yüksek | ✅ | ❌ | Ticari dışı | Alternatif |
 | Kokoro / F5-TTS | Yüksek | ❌ | ✅ / ❌ | Apache / CC-BY-NC | TR yok → elenir |
@@ -131,6 +132,9 @@ Ses → yazı, **whisper.cpp** ile yapılır (Qwen3-ASR kullanılmaz).
 - Varsayılan **Chatterbox v3**; GPU'da ~2–3 GB → LLM Q4 ile ~8 GB (ölçüm şart).
 - GPU sıkışırsa **Piper** (CPU) canlı moda düşer.
 - Chatterbox çıktıları PerTh filigranı taşır (MIT, duyulmaz) — engel değil.
+- **Trendyol-TTS (`voxcpm`):** TR native ve anlaşılır (geri-çevirim WER ~0,08) **ama** ~5,6 GB VRAM +
+  RTF ~3 → canlı `<1 sn` hattına **alınmadı**; çevrimdışı/yüksek kalite motoru (karar #16). Ayrıntı:
+  [`tts-tr-sonuc.md`](tts-tr-sonuc.md).
 - **Projeye dahil değil:** **Fish Audio S2 Pro** yalnızca izole WSL denemesidir (ticari dışı lisans,
   yalnız Linux/WSL, 24 GB) — bkz. [`kararlar.md`](kararlar.md) karar #15.
 
@@ -152,7 +156,7 @@ Ses → yazı, **whisper.cpp** ile yapılır (Qwen3-ASR kullanılmaz).
 | `mamidchats-desktop.ps1` | WinForms arayüzü, olay döngüsü |
 | `agent/llm-run.ps1` | `llama-server`, MTP, VRAM kapısı |
 | `agent/asr-tools.py` | whisper.cpp çıkarımı |
-| `agent/tts-tools.py` | Chatterbox / Piper / SAPI |
+| `agent/tts-tools.py` | Chatterbox / voxcpm (Trendyol-TTS) / Piper / SAPI |
 | `agent/pipeline.ps1` | ASR → LLM (akış) → cümle → TTS |
 | `agent/audio-capture.ps1` | winmm kayıt |
 

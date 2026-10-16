@@ -12,29 +12,33 @@ Repo: `github.com/workaybarsh/aybars_says`
 - **MTP araçları:** `agent/mtp_inject.py`, `agent/mtp-durum.py`, `scripts/mtp-dogrula.ps1` + testler
 - **ASR aracı:** `agent/asr-tools.py`, `scripts/asr-olcum.ps1` — whisper.cpp ile gerçek uçtan uca
   duman testi (base.en, CPU, RTF ~0,19)
-- **TTS aracı:** `agent/tts-tools.py` (chatterbox / piper / sapi)
-- Testler: `python -m pytest -q` → **16 test** geçiyor
+- **TTS aracı:** `agent/tts-tools.py` (chatterbox / **voxcpm** / piper / sapi)
+- **TTS-TR değerlendirmesi:** **Trendyol-TTS** ölçüldü (VRAM ~5,6 GB, RTF ~3, geri-çevirim
+  Whisper WER ~0,08) → canlı hat için ağır; **çevrimdışı motor** olarak eklendi (karar #16,
+  `docs/tts-tr-sonuc.md`)
+- Testler: `python -m pytest -q` → **17 test** geçiyor
 
 ## Önemli kararlar (özet)
 - **LLM:** Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M **+ MTP zorunlu** (kararlar #12, #13)
 - **STT:** whisper.cpp `large-v3-turbo` (karar #11)
-- **TTS:** İngilizce için **Chatterbox** çok iyi (MIT). ⚠️ **Türkçesi kötü çıktı** → Türkçe için
-  **alternatif aranıyor** (karar #14 revize edilecek)
+- **TTS:** İngilizce için **Chatterbox** (MIT); Türkçesi zayıf. TR için **Trendyol-TTS** test
+  edildi: **anlaşılır** ama **ağır** (~5,6 GB VRAM, RTF ~3) → **çevrimdışı motor** olarak eklendi
+  (`voxcpm` backend, kararlar #14/#16). Canlı TR hattı hâlâ açık (kararlar #16 açık maddesi)
 
 ## Açık işler / sıradaki adımlar
-1. **Türkçe TTS alternatifi:** Chatterbox ve Fish Türkçede yetersiz kaldı.
-   **Aktif aday: Trendyol-TTS** (`openbmb/VoxCPM2` + Türkçe LoRA, **MIT**, ~2B).
-   - Test betiği: `scripts/tts-trendyol-test.py` → `python scripts/tts-trendyol-test.py`
-   - Kurulum: `pip install voxcpm soundfile`
-   - Örnek çıktı: `logs\tts\trendyol-tr.wav`
-   - Beğenilirse: `agent/tts-tools.py`'ye `voxcpm` backend + `docs/kararlar.md` #14 güncelle
-   - Yedekler: **CosyVoice2**, **XTTS-v2**
+1. **Türkçe TTS:** Trendyol-TTS değerlendirildi → **anlaşılır** ama canlı hat için **ağır**
+   (VRAM ~5,6 GB, RTF ~3). `agent/tts-tools.py`'ye `voxcpm` backend eklendi (çevrimdışı/yüksek
+   kalite). Ayrıntı: `docs/tts-tr-sonuc.md`.
+   - **Canlı TR için sıradaki adaylar: CosyVoice2, XTTS-v2** (hız + VRAM ölçülmeli)
+   - Beğenilmezse geri dönüş: Piper (CPU, hızlı ama robotik)
 2. **Fish S2 Pro** → ~~izole WSL denemesi~~ (denendi, Türkçe zayıf, **silindi**; WSL kaldı)
 3. **Faz 2 gerçek ölçüm:** `large-v3-turbo` ile gecikme/RTF (hedef donanım, N=10)
 4. **Faz 3:** LLM + MTP + prefix cache
 
 ## Ortam notları
 - **WSL:** Ubuntu 24.04, `E:\wsl\ubuntu-24.04`, RTX 5060 Ti GPU geçişi çalışıyor (Python 3.12)
-- **Chatterbox venv:** `%TEMP%\opencode\tts-venv` (5,1 GB) — `torch 2.11.0+cu128`, sm_120
-- **Örnek sesler:** `logs\tts\tr-ornek.wav`, `logs\tts\en-ornek.wav`
+- **Chatterbox venv:** `%TEMP%\opencode\tts-venv` (5,1 GB) — `torch 2.11.0+cu128`, sm_120,
+  `voxcpm 2.0.3`; Trendyol-TTS HF önbellekte (~4,8 GB)
+- **Örnek sesler:** `logs\tts\tr-ornek.wav`, `logs\tts\en-ornek.wav`,
+  `logs\tts\trendyol-tr.wav`, `logs\tts\trendyol-tr2.wav`
 - Proje **native Windows** hedefler; Fish/WSL yalnızca deneme amaçlı
