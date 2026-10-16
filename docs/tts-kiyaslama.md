@@ -107,3 +107,60 @@ Sesli asistan tipik olarak **kısa** yanıt üretir (0–50 karakter). Paper'ın
 
 - Özköse, Y. E., Kahraman, A., Haznedaroğlu, A. (Sestek). *A Comprehensive Objective Evaluation of
   Modern Text-to-Speech for Turkish Using Speech Quality Assessment Models.* **arXiv:2610.06057v1**, 2026.
+
+## 8. Kaynak kullanımı (araştırma; yerel çalıştırma yapılmadı)
+
+> Bu bölüm **yayınlanmış kaynaklardan** derlenmiştir (henüz kendi donanımımızda ölçülmedi). Amaç:
+> motorların **parametre / VRAM / hız / lisans** profillerini karşılaştırmak.
+
+| Motor | Parametre | VRAM (çıkarım) | RTF (üst düzey GPU) | İlk ses (streaming) | TR zero-shot | Lisans |
+|---|---|---|---|---|---|---|
+| **Chatterbox Multilingual v3** | 0,5B | **~2 GB** (min) – ~4 GB | **~0,05–0,2** | var (chunked) | ✅ (ama diakritik hatası) | **MIT** |
+| **VoxCPM2** (→ Trendyol-TTS) | 2B (2,3B) | ~5 (bf16) – ~8 GB | ~0,30 (4090) / ~0,13 Nano-vLLM | var (chunk) | ✅ | Apache-2.0 |
+| **CosyVoice 2** | 0,5B | ~6–8 GB (kaynak) | iyi (streaming) | **~150 ms** | ⚠️ 2'de yok (CosyVoice 3 / finetune gerek) | Apache-2.0 |
+| **OmniVoice** | 0,81B | **~2,3 GB** (fp16) | **~0,04** (L40S) / ~0,025 (H100) | NAR (batch) | ✅ (600+ dil) | Apache-2.0 |
+
+Kaynaklar: VoxCPM2 README/teknik rapor (arXiv:2606.06928) + voxcpm.readthedocs; OmniVoice makalesi
+(arXiv:2604.00688) + k2-fsa/OmniVoice + L40S/Jetson ölçümleri; CosyVoice2 (arXiv:2412.10117) +
+fun-audiollm; Chatterbox (Resemble AI, GitHub/HF). VRAM rakamları model kartları/bildirimlerle
+değişir; **kesin değer kendi kartımızda ölçülmeli**.
+
+**Chatterbox öne çıkıyor:** en küçük (0,5B), **en az VRAM (~2 GB)**, MIT, ve RTF <1 (gerçek zamandan
+hızlı). Bizim gözlemimizle tutarlı: **kalite iyi**, tek sorun Türkçe karakterler.
+
+### 8.1 VoxCPM2 RTF uyumsuzluğu (önemli açık soru)
+
+| Kaynak | RTF |
+|---|---|
+| Resmî (RTX 4090, 10 adım, torch.compile) | ~0,30 |
+| **Bizim ölçüm (RTX 5060 Ti, 16 adım, `optimize=True`)** | **~3,0** (10× yavaş) |
+
+Muhtemel nedenler: (a) 16 adım vs 10 adım (~1,6×); (b) **Windows/sm_120'de `torch.compile`/Triton
+devreye girmemiş olabilir** (VoxCPM FAQ), saf eager moda düşme; (c) 5060 Ti, 4090'dan yavaş. Yani
+**bizim RTF ~3 ölçümü muhtemelen iyimser değil, kötümser**; `inference_timesteps=10` + derlemenin
+çalıştığı doğrulanarak **yeniden ölçülmeli**.
+
+## 9. Chatterbox Türkçe sorunu ve çözümü
+
+**Sorun (kanıtlı):** Chatterbox çok dilli tokenizer'ı Türkçeyi **grafem** olarak işler; `ç, ş, ü, ğ,
+ö` (ve `ı`) ya atlanıyor ya yanlış seslendiriliyor — tam kullanıcının gözlemi ("bugün→bugun",
+"nasıl→nasil"). Resmî kayıtlar: resemble-ai/chatterbox **#261**, HF **discussion #33**
+("Turkish characters skipped"), ve #550 (fonem/IPA girişi talep ediliyor — henüz yok).
+
+**Neden oluyor:** referans ses Türkçe değilse + tokenizer diakritikleri tanımıyorsa harfler düşüyor,
+vurgu yanlış yere kayıyor. Türkçe'nin **sondan eklemeli** yapısı ve telaffuz kuralları (yumuşak ğ,
+noktasız ı, ünlü uyumu) grafem modelinde bozuluyor.
+
+**Çözüm yolları (kolaydan ağıra):**
+
+| Yol | Ne yapar | Emek | Beklenti |
+|---|---|---|---|
+| **1. UTF-8 metin + güncel sürüm** | Doğru Türkçe karakterleri + tokenizer düzeltmeleri (çok dilli v2/v3; HF'de "problem solved" notu) | Az | Kısmi iyileşme |
+| **2. Türkçe ön-normalizasyon / respelling (G2P-lite)** | Metni modelin doğru okuyacağı forma çevir (ör. `ç→ch`, `ş→sh`, `ı→ı`→fonetik ipucu); sorunlu sözcükler için sözlük | Orta | **En pratik**; CER/WER ile ölçülür |
+| **3. espeak-ng tabanlı G2P** | Türkçe metni IPA/foneme çevir | Orta | Chatterbox **fonem kabul etmiyor** (#550) → şimdilik sınırlı |
+| **4. Türkçe ince-ayar / LoRA** | Chatterbox'ı Türkçe veriyle eğit (Trendyol'un VoxCPM2'ye yaptığı gibi) | Yüksek | En iyi sonuç, ama maliyetli |
+
+**Sonuç:** Chatterbox'ı "Türkçede elenmiş" saymak **yanlış olur** — sorun **kalite değil, metin
+ön-işleme**. En ucuz (0,5B, ~2 GB, MIT) ve en hızlı (RTF <1) motor olduğu için, **Türkçe
+ön-normalizasyon (yol 2)** ile ciddi biçimde geri kazanılabilir. Ayrıca yukarıdaki benchmark'taki
+"kısa cümlede çökme" bulgusunun bir kısmı da bu diakritik/tokenizer hatasından kaynaklanıyor olabilir.
