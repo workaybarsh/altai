@@ -117,6 +117,7 @@ orada ölçülür (`large-v3-turbo` yeterli mi, `medium`/`small`'a mı inilmeli)
 | [`docs/mimari.md`](docs/mimari.md) | Mimari, veri akışı, tur dizisi, sorumluluk tablosu, gecikme bütçesi |
 | [`docs/mtp-dogrulama.md`](docs/mtp-dogrulama.md) | MTP doğrulama + enjeksiyon planı (kabul testleri, yedekler) |
 | [`docs/faz2-olcum-plani.md`](docs/faz2-olcum-plani.md) | Faz 2: whisper.cpp hattı ve `<1 sn` ölçüm planı |
+| [`docs/faz2-sonuc.md`](docs/faz2-sonuc.md) | Faz 2 ölçüm sonuçları (duman testi kaydı) |
 | [`docs/kararlar.md`](docs/kararlar.md) | Karar günlüğü |
 | [`AGENTS.md`](AGENTS.md) | Geliştirici/ajan altyapı rehberi |
 

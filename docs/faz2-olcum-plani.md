@@ -83,3 +83,17 @@ parça paralelliğini/VAD bölütlemeyi ayarla.
 
 Faz 2 geçince **Faz 3** (LLM 9B i1-Q5_K_M + MTP + prefix cache) → **Faz 4** (TTS) → **Faz 5**
 (arayüz + barge-in).
+
+## 12. Araçlar (mevcut)
+
+| Araç | İş |
+|---|---|
+| `agent/asr-tools.py` | 16 kHz mono dönüştürme + whisper.cpp çıkarımı + gecikme/RTF ölçümü (JSON) |
+| `scripts/asr-olcum.ps1` | Toplu ölçüm koşum takımı; `logs\faz2-asr-sonuc.json` yazar |
+
+```powershell
+pwsh -File scripts/asr-olcum.ps1 -WavDir "tests\assets" -Model "models\ggml-large-v3-turbo.bin" -Repeat 10
+```
+
+Gerçek whisper.cpp yoksa araç **dürüstçe** `ok=false` döner (uydurmaz). Testler: `python -m pytest -q`.
+

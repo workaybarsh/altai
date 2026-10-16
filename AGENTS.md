@@ -68,12 +68,15 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 | ⬜ | `mamidchats-desktop.ps1` | Ana uygulama: WinForms arayüzü, sohbet durumu, olay döngüsü |
 | ⬜ | `agent/llm-run.ps1` | `llama-server` başlat/durdur, MTP, VRAM kapısı |
 | ✅ | `agent/mtp_inject.py` | Quant GGUF'a MTP/`nextn` başlığı ekler (taban `huihui-ai` deposundan) |
+| ✅ | `agent/mtp-durum.py` | Bir GGUF'un MTP durumunu JSON olarak yazar |
 | ✅ | `scripts/mtp-dogrula.ps1` | MTP durumunu denetler; `-Inject` ile başlığı ekler |
-| ⬜ | `agent/asr-tools.py` | 16 kHz mono dönüştürme + **whisper.cpp** çıkarımı |
+| ✅ | `agent/asr-tools.py` | 16 kHz mono dönüştürme + **whisper.cpp** çıkarımı + gecikme/RTF ölçümü |
+| ✅ | `scripts/asr-olcum.ps1` | Faz 2 ASR ölçüm koşum takımı (sarmalayıcı) |
 | ⬜ | `agent/tts-tools.py` | Takas edilebilir TTS: Chatterbox / Piper / SAPI |
 | ⬜ | `agent/pipeline.ps1` | Boru hattı: ASR → LLM (akış) → cümle bölme → TTS |
 | ⬜ | `agent/audio-capture.ps1` | winmm `mciSendString` ile bağımlılıksız kayıt |
-| ⬜ | `scripts/`, `docs/`, `tests/` | kurulum/tanı, belgeler, pytest |
+| ✅ | `tests/` | pytest (MTP enjeksiyonu + ASR araçları) |
+| ✅ | `scripts/`, `docs/` | kurulum/tanı, belgeler |
 
 ## 5. Gecikme bütçesi (hedef < 1000 ms)
 
@@ -105,12 +108,13 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 - [ ] Dil modeli hâlâ yerleşik mi (boşaltılmıyor)?
 - [ ] GPU'ya LLM dışında bir şey taşınmadı mı?
 - [ ] TR ve ENG sürümleri tutarlı mı?
-- [ ] `README.md`, `docs/mimari.md`, `docs/mtp-dogrulama.md`, `docs/faz2-olcum-plani.md`, `docs/kararlar.md` güncel mi?
+- [ ] `README.md`, `docs/mimari.md`, `docs/mtp-dogrulama.md`, `docs/faz2-olcum-plani.md`, `docs/faz2-sonuc.md`, `docs/kararlar.md` güncel mi?
 
 ## 8. Değişiklik günlüğü
 
 | Tarih | Değişiklik | Dosyalar |
 |---|---|---|
+| 2026-10-16 | **Faz 2 ASR hattı iskeleti eklendi** (`asr-tools.py`, `asr-olcum.ps1`) ve **gerçek whisper.cpp ile uçtan uca doğrulandı** (base.en, CPU, RTF ~0,19). Testler 13'e çıktı. | agent/asr-tools.py, scripts/asr-olcum.ps1, tests/, docs/faz2-olcum-plani.md, AGENTS.md |
 | 2026-10-16 | **İlk çalışan araç eklendi:** `agent/mtp_inject.py` (kanıtlı) + `scripts/mtp-dogrula.ps1` durum/enjeksiyon betiği. Depo "sesli" olarak işaretlendi. | agent/mtp_inject.py, scripts/mtp-dogrula.ps1, README.md, AGENTS.md |
 | 2026-10-16 | **MTP doğrulandı ve zorunlu kılındı.** Hedef quant GGUF'ta MTP yok; kaynak 15 tensor mevcut; `mtp_inject.py` şart. Doğrulama + kabul testleri belgesi eklendi. | README.md, AGENTS.md, docs/mimari.md, docs/kararlar.md, docs/mtp-dogrulama.md |
 | 2026-10-16 | LLM, **Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** (mradermacher imatrix quant) olarak belirlendi. | README.md, AGENTS.md, docs/mimari.md, docs/kararlar.md |

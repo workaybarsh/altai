@@ -12,6 +12,12 @@ tmp/
 temp/
 *.tmp
 
+# Sırlar / ortam
+.env
+.env.*
+*.key
+secrets/
+
 # Model / ses dosyaları (repoda tutulmaz)
 models/
 *.gguf
