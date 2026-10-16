@@ -42,10 +42,26 @@ def _read_text(args) -> str:
 
 # ------------------------------------------------------------------ chatterbox
 
+def _save_wav(wav, path, sr):
+    """WAV yazar. torchaudio.save bazi surumlerde torchcodec ister; once soundfile dene."""
+    try:
+        import soundfile as sf
+        arr = wav.detach().cpu().numpy() if hasattr(wav, "detach") else wav
+        try:
+            arr = arr.squeeze()
+        except Exception:
+            pass
+        sf.write(path, arr, int(sr))
+        return "soundfile"
+    except Exception:
+        import torchaudio as ta
+        ta.save(path, wav, sr)
+        return "torchaudio"
+
+
 def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
                      exaggeration=0.5, cfg=0.5, t3_model="v3", seed=None):
     import torch
-    import torchaudio as ta
 
     if seed is not None:
         torch.manual_seed(seed)
@@ -53,7 +69,11 @@ def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
     uses_mtl = bool(lang)
     if uses_mtl:
         from chatterbox.mtl_tts import ChatterboxMultilingualTTS
-        model = ChatterboxMultilingualTTS.from_pretrained(device=device, t3_model=t3_model)
+        try:
+            model = ChatterboxMultilingualTTS.from_pretrained(device=device, t3_model=t3_model)
+        except TypeError:
+            # Kurulu surum t3_model'i tanimiyor olabilir; sade cagri
+            model = ChatterboxMultilingualTTS.from_pretrained(device=device)
     else:
         from chatterbox.tts import ChatterboxTTS
         model = ChatterboxTTS.from_pretrained(device=device)
@@ -78,11 +98,12 @@ def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
             wav = _gen({})
     dt = time.perf_counter() - t0
 
-    ta.save(out_wav, wav, model.sr)
+    writer = _save_wav(wav, out_wav, model.sr)
     secs = wav.shape[-1] / float(model.sr)
     return {"out": out_wav, "sample_rate": int(model.sr), "audio_seconds": round(secs, 3),
             "tts_seconds": round(dt, 3), "rtf": round((dt / secs) if secs else float("inf"), 3),
-            "voice_prompt": voice_prompt, "language_id": lang, "t3_model": t3_model if uses_mtl else None}
+            "voice_prompt": voice_prompt, "language_id": lang,
+            "t3_model": t3_model if uses_mtl else None, "writer": writer}
 
 
 # ------------------------------------------------------------------ piper (yedek)
