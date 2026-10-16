@@ -4,6 +4,7 @@ Her karar: **ne**, **neden**, **alternatifler**. En yeni üstte.
 
 | # | Tarih | Karar | Gerekçe | Alternatifler (neden değil) |
 |---|---|---|---|---|
+| 13 | 2026-10-16 | **MTP zorunlu + enjeksiyonla geri eklenir** | Quant GGUF MTP/`nextn` içermez (doğrulandı: hedefte 0, kaynakta 15 tensor); MTP olmadan `--spec-type draft-mtp` sunucuyu açmaz | MTP kapalı (~2x yavaş), MTP'li custom GGUF üretmek (zahmetli, kırılgan) |
 | 12 | 2026-10-16 | LLM = **Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** (imatrix GGUF) | imatrix quant aynı boyutta daha iyi kalite verir; net HF kaynağı (`mradermacher/Huihui-Qwen3.5-9B-abliterated-i1-GGUF`); Q5_K_M ~6,6 GB | Orijinal `huihui-ai` (static) Q5_K_M (imatrix'e göre biraz daha zayıf), Q4 (kalite kaybı) |
 | 11 | 2026-10-16 | STT = **whisper.cpp** (`large-v3-turbo`) | Olgun, çok dilli, olgun C/C++ ekosistem, CPU'da hızlı (~0,2–0,4 sn); CUDA'sız iyi performans | Qwen3-ASR-1.7B (Türkçe+akışlı idi ama CPU'da yavaş), `large-v3` (yavaş) |
 | 10 | 2026-10-11 | ~~STT = **Qwen3-ASR-1.7B** (whisper yerine); hız yedeği **0.6B**~~ → **#11 ile değiştirildi** | Türkçe + 30 dil, akışlı çıkarım, dil algılama, gürültü dayanıklılığı, Apache-2.0 | whisper large-v3-turbo (o dönem yedek olarak görülüyordu) |
@@ -42,7 +43,9 @@ Planlama sırasında masaya gelip vazgeçilen seçenekler (kayıt için; en yeni
 ## Açık kararlar (henüz verilmedi)
 
 - [ ] LLM quantizasyonu: **i1-Q5_K_M** (varsayılan) mı, VRAM için **i1-Q4_K_M** (~5,6 GB) mı?
-- [ ] **MTP uyumu:** i1 imatrix quant + `mtp_inject.py` çalışıyor mu? Çalışmazsa orijinal `huihui-ai` GGUF'a mı dönülür?
+- [x] **MTP:** quant GGUF'ta yok → `mtp_inject.py` ile enjekte edilir (kaynak doğrulandı). Kabul
+  testleri: [`mtp-dogrulama.md`](mtp-dogrulama.md). *(Karar #13.)*
+- [ ] MTP enjeksiyonu sonrası 8 GB VRAM'e sığıyor mu (gerçek ölçüm)?
 - [ ] STT: **`large-v3-turbo`** yeterli mi, `medium`/`small`'a mı inilmeli (Faz 2 ölçümü)
 - [ ] TTS birincil motoru: **Chatterbox v3** (gerçekçi, GPU) mı **Piper** (hızlı, CPU) mı
 - [ ] Akışlı ASR penceresi / VAD eşiği kesinleşmesi

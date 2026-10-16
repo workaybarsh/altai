@@ -37,8 +37,10 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 | Çalıştırma | `llama-server` + `--spec-type draft-mtp` (daima) |
 | Bağlam | varsayılan 32768 |
 
-> **Doğrulanacak:** imatrix quant ile MTP katmanı uyumu. MTP, taban modelin `nextn` katmanlarıyla
-> çalışır; yeni quant dosyasında sorun çıkarsa orijinal `huihui-ai` GGUF'una düşülür.
+> **Doğrulandı (2026-10-16):** hedef quant GGUF (`i1-Q5_K_M`) MTP/`nextn` katmanı **içermez**;
+> kaynak `huihui-ai/Huihui-Qwen3.5-9B-abliterated` deposunda **15 MTP tensoru mevcut** ve
+> `mtp_inject.py` eşlemesiyle birebir uyuşur. Enjeksiyon **zorunludur**. Riskler ve kabul testleri:
+> [`docs/mtp-dogrulama.md`](docs/mtp-dogrulama.md).
 
 ### 3.2 STT: whisper.cpp
 
@@ -63,6 +65,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 |---|---|
 | `mamidchats-desktop.ps1` | Ana uygulama: WinForms arayüzü, sohbet durumu, olay döngüsü |
 | `agent/llm-run.ps1` | `llama-server` başlat/durdur, MTP, VRAM kapısı |
+| `agent/mtp_inject.py` | Quant GGUF'a MTP/`nextn` başlığı ekler (taban `huihui-ai` deposundan) |
 | `agent/asr-tools.py` | 16 kHz mono dönüştürme + **whisper.cpp** çıkarımı |
 | `agent/tts-tools.py` | Takas edilebilir TTS: Chatterbox / Piper / SAPI |
 | `agent/pipeline.ps1` | Boru hattı: ASR → LLM (akış) → cümle bölme → TTS |
@@ -86,7 +89,8 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 4. **KV önbellek eşleşmesi.** Arayüzün mesaj dizisi sunucununkiyle bayt bayt aynı olmalı.
 5. **`Start-DetachedProcess` kullan.** `Start-Process -Redirect…` çağıranın stdout'unu devralır.
 6. **VRAM payı küçük tutulur.** 9B i1-Q5_K_M (~6,6 GB) + MTP + KV, 8 GB kartın sınırında.
-7. **MTP bayrağı yalnızca GGUF MTP katmanı taşıyorsa eklenir** (`Test-GgufHasMtp`).
+7. **MTP bayrağı yalnızca GGUF MTP katmanı taşıyorsa eklenir** (`Test-GgufHasMtp`). Quant GGUF
+   MTP'yi içermez; indirmede `mtp_inject.py` ile geri eklenir (bkz. [`docs/mtp-dogrulama.md`](docs/mtp-dogrulama.md)).
 8. **ASR/TTS CPU'yu paylaşır.** Aynı anda çalışmazlar (dinleme vs konuşma), ama gürültülü makinede ölçüm şart.
 9. **whisper.cpp thread sayısı.** Fiziksel çekirdek sayısına göre ayarlanır; aşırı thread hızı düşürür.
 
@@ -98,12 +102,13 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 - [ ] Dil modeli hâlâ yerleşik mi (boşaltılmıyor)?
 - [ ] GPU'ya LLM dışında bir şey taşınmadı mı?
 - [ ] TR ve ENG sürümleri tutarlı mı?
-- [ ] `README.md`, `docs/mimari.md`, `docs/faz2-olcum-plani.md`, `docs/kararlar.md` güncel mi?
+- [ ] `README.md`, `docs/mimari.md`, `docs/mtp-dogrulama.md`, `docs/faz2-olcum-plani.md`, `docs/kararlar.md` güncel mi?
 
 ## 8. Değişiklik günlüğü
 
 | Tarih | Değişiklik | Dosyalar |
 |---|---|---|
+| 2026-10-16 | **MTP doğrulandı ve zorunlu kılındı.** Hedef quant GGUF'ta MTP yok; kaynak 15 tensor mevcut; `mtp_inject.py` şart. Doğrulama + kabul testleri belgesi eklendi. | README.md, AGENTS.md, docs/mimari.md, docs/kararlar.md, docs/mtp-dogrulama.md |
 | 2026-10-16 | LLM, **Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** (mradermacher imatrix quant) olarak belirlendi. | README.md, AGENTS.md, docs/mimari.md, docs/kararlar.md |
 | 2026-10-16 | STT **Qwen3-ASR → whisper.cpp** (`large-v3-turbo`) olarak geri çevrildi. | README.md, AGENTS.md, docs/mimari.md, docs/faz2-olcum-plani.md, docs/kararlar.md |
 | 2026-10-16 | Depo adı **mamidChats-Chatbot → aybars_says**; metinler güncellendi. | tümü |

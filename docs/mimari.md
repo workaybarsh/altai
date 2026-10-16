@@ -115,7 +115,8 @@ Ses → yazı, **whisper.cpp** ile yapılır (Qwen3-ASR kullanılmaz).
 - GPU'da **yerleşik**; turlar arasında boşaltılmaz.
 - **MTP kayıpsız** (kabul edilen tokenlar hedef modelle doğrulanır); MamidLabs ölçümü ~2x hız.
 - **KV prefix cache**: her turda yalnızca yeni tokenlar işlenir.
-- **Doğrulanacak:** imatrix quant ile MTP katmanı uyumu (bkz. [`kararlar.md`](kararlar.md) açık kararlar).
+- **Doğrulandı:** quant GGUF MTP/`nextn` **içermez**; `mtp_inject.py` ile taban `huihui-ai`
+  deposundan geri eklenir (15 tensor mevcut). Kabul testleri: [`mtp-dogrulama.md`](mtp-dogrulama.md).
 
 ## 6. TTS: takas edilebilir katman
 
@@ -138,8 +139,9 @@ Ses → yazı, **whisper.cpp** ile yapılır (Qwen3-ASR kullanılmaz).
 | GPU (8 GB) | Huihui-Qwen3.5-9B i1-Q5_K_M (~6,6 GB) + MTP + KV cache (kartın sınırında) |
 | CPU çekirdekleri | whisper.cpp (dinleme) **veya** TTS (konuşma) — sırayla |
 
-> **Not:** i1-Q5_K_M tek başına ~6,6 GB; MTP + KV cache ile 8 GB'a çok yaklaşır. Sıkışırsa
-> **i1-Q4_K_M** (~5,6 GB) değerlendirilir.
+> **Not:** i1-Q5_K_M tek başına ~6,6 GB; **MTP başlığı (~bir transformer bloğu)** + KV cache ile
+> 8 GB'a çok yaklaşır. Sıkışırsa **i1-Q4_K_M** (~5,6 GB), `q4_0` KV veya düşük `-c` değerlendirilir.
+> Enjeksiyon sonrası VRAM **ölçülmelidir** (bkz. [`mtp-dogrulama.md`](mtp-dogrulama.md)).
 
 ## 8. Önerilen dosya yapısı
 
@@ -156,8 +158,9 @@ Ses → yazı, **whisper.cpp** ile yapılır (Qwen3-ASR kullanılmaz).
 
 1. **whisper.cpp CPU hızı.** `large-v3-turbo` `<1 sn` için genelde yeterli; uzun cümlede `medium`/`small`
    yedeği veya akış optimizasyonu gerekebilir.
-2. **MTP + imatrix quant uyumu.** Yeni quant dosyasında MTP katmanı sorun çıkarırsa orijinal
-   `huihui-ai` GGUF'a dönülür.
+2. **MTP enjeksiyonu.** Quant GGUF MTP'yi içermez; `mtp_inject.py` şart. Enjeksiyon sonrası
+   `has_mtp`, `block_count`, sunucu açılışı doğrulanır (bkz. [`mtp-dogrulama.md`](mtp-dogrulama.md)).
+   Başarısızsa orijinal `huihui-ai` GGUF'a dönülür.
 3. **Endpoint sezgisi.** VAD agresif/yavaş dengesi; bas-konuş sıfırlar.
 4. **Barge-in.** Yankı riski → kulaklık/yankı bastırma.
 5. **TTS GPU payı.** Chatterbox GPU'ya alınırsa LLM Q4'e inmeli; ölçüm gerek.

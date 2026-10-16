@@ -58,7 +58,8 @@ tüketicileri var. Burada **tek sahipli** bir hat kurulur.
   Kaynak: `mradermacher/Huihui-Qwen3.5-9B-abliterated-i1-GGUF`; taban: `huihui-ai/Huihui-Qwen3.5-9B-abliterated`.
   Dosya: `Huihui-Qwen3.5-9B-abliterated.i1-Q5_K_M.gguf` (~6,6 GB). MTP başlığı `mtp_inject.py` ile eklenir.
 - **MTP daima açık.** `--spec-type draft-mtp`; kapatılmaz. Hız + kayıpsız çıktı.
-  *(Not: yeni imatrix quant ile MTP uyumu doğrulanmalı — bkz. [`docs/kararlar.md`](docs/kararlar.md).)*
+  Quant GGUF MTP başlığını **içermez**; `mtp_inject.py` ile taban `huihui-ai` deposundan geri
+  eklenir (kaynak tensorlar doğrulandı). Doğrulama + kabul testleri: [`docs/mtp-dogrulama.md`](docs/mtp-dogrulama.md).
 - **GPU yalnızca LLM'e aittir.** STT ve TTS CPU'da; dil modeli yerleşik kalır, boşaltılmaz.
 
 ## Teknoloji kararları (özet)
@@ -96,6 +97,7 @@ orada ölçülür (`large-v3-turbo` yeterli mi, `medium`/`small`'a mı inilmeli)
 | Yol | İçerik |
 |---|---|
 | [`docs/mimari.md`](docs/mimari.md) | Mimari, veri akışı, tur dizisi, sorumluluk tablosu, gecikme bütçesi |
+| [`docs/mtp-dogrulama.md`](docs/mtp-dogrulama.md) | MTP doğrulama + enjeksiyon planı (kabul testleri, yedekler) |
 | [`docs/faz2-olcum-plani.md`](docs/faz2-olcum-plani.md) | Faz 2: whisper.cpp hattı ve `<1 sn` ölçüm planı |
 | [`docs/kararlar.md`](docs/kararlar.md) | Karar günlüğü |
 | [`AGENTS.md`](AGENTS.md) | Geliştirici/ajan altyapı rehberi |
