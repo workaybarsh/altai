@@ -1,10 +1,10 @@
-# aybars_says · Geliştirici ve yapay zekâ ajanları için altyapı rehberi
+# aybars_says · sesli yerel yapay zekâ sohbet botu · Geliştirici ve yapay zekâ ajanları için altyapı rehberi
 
 Bu dosya, aybars_says (eski adı: mamidChats Chatbot) üzerinde çalışan geliştiriciler ve yapay
 zekâ ajanları için tek doğru kaynaktır. Kullanıcıyla iletişim dili **Türkçe**dir.
 
-> Bu depo **planlama** aşamasındadır. Kod yoktur; aşağıdaki yapı ve kurallar, üzerine inşa edilecek
-> hedefi tanımlar.
+> Bu depo **ağırlıklı olarak planlama** aşamasındadır; ilk çalışan araç `agent/mtp_inject.py`.
+> Aşağıdaki yapı ve kurallar, üzerine inşa edilecek hedefi tanımlar.
 
 ## 1. Ürün tek paragrafta
 
@@ -59,18 +59,21 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 > (thread ayarına bağlı). Uzun cümlede `<1 sn` sınırda; VAD bölütleme + parça paralelliği ile telafi
 > edilir. Gerekirse `medium`/`small`'a inilir. Faz 2'de ölçülür.
 
-## 4. Bileşen haritası (hedef)
+## 4. Bileşen haritası
 
-| Yol | İçerik |
-|---|---|
-| `mamidchats-desktop.ps1` | Ana uygulama: WinForms arayüzü, sohbet durumu, olay döngüsü |
-| `agent/llm-run.ps1` | `llama-server` başlat/durdur, MTP, VRAM kapısı |
-| `agent/mtp_inject.py` | Quant GGUF'a MTP/`nextn` başlığı ekler (taban `huihui-ai` deposundan) |
-| `agent/asr-tools.py` | 16 kHz mono dönüştürme + **whisper.cpp** çıkarımı |
-| `agent/tts-tools.py` | Takas edilebilir TTS: Chatterbox / Piper / SAPI |
-| `agent/pipeline.ps1` | Boru hattı: ASR → LLM (akış) → cümle bölme → TTS |
-| `agent/audio-capture.ps1` | winmm `mciSendString` ile bağımlılıksız kayıt |
-| `scripts/`, `docs/`, `tests/` | kurulum/tanı, belgeler, pytest |
+✅ = mevcut · ⬜ = hedef
+
+| Durum | Yol | İçerik |
+|---|---|---|
+| ⬜ | `mamidchats-desktop.ps1` | Ana uygulama: WinForms arayüzü, sohbet durumu, olay döngüsü |
+| ⬜ | `agent/llm-run.ps1` | `llama-server` başlat/durdur, MTP, VRAM kapısı |
+| ✅ | `agent/mtp_inject.py` | Quant GGUF'a MTP/`nextn` başlığı ekler (taban `huihui-ai` deposundan) |
+| ✅ | `scripts/mtp-dogrula.ps1` | MTP durumunu denetler; `-Inject` ile başlığı ekler |
+| ⬜ | `agent/asr-tools.py` | 16 kHz mono dönüştürme + **whisper.cpp** çıkarımı |
+| ⬜ | `agent/tts-tools.py` | Takas edilebilir TTS: Chatterbox / Piper / SAPI |
+| ⬜ | `agent/pipeline.ps1` | Boru hattı: ASR → LLM (akış) → cümle bölme → TTS |
+| ⬜ | `agent/audio-capture.ps1` | winmm `mciSendString` ile bağımlılıksız kayıt |
+| ⬜ | `scripts/`, `docs/`, `tests/` | kurulum/tanı, belgeler, pytest |
 
 ## 5. Gecikme bütçesi (hedef < 1000 ms)
 
@@ -108,6 +111,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 
 | Tarih | Değişiklik | Dosyalar |
 |---|---|---|
+| 2026-10-16 | **İlk çalışan araç eklendi:** `agent/mtp_inject.py` (kanıtlı) + `scripts/mtp-dogrula.ps1` durum/enjeksiyon betiği. Depo "sesli" olarak işaretlendi. | agent/mtp_inject.py, scripts/mtp-dogrula.ps1, README.md, AGENTS.md |
 | 2026-10-16 | **MTP doğrulandı ve zorunlu kılındı.** Hedef quant GGUF'ta MTP yok; kaynak 15 tensor mevcut; `mtp_inject.py` şart. Doğrulama + kabul testleri belgesi eklendi. | README.md, AGENTS.md, docs/mimari.md, docs/kararlar.md, docs/mtp-dogrulama.md |
 | 2026-10-16 | LLM, **Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** (mradermacher imatrix quant) olarak belirlendi. | README.md, AGENTS.md, docs/mimari.md, docs/kararlar.md |
 | 2026-10-16 | STT **Qwen3-ASR → whisper.cpp** (`large-v3-turbo`) olarak geri çevrildi. | README.md, AGENTS.md, docs/mimari.md, docs/faz2-olcum-plani.md, docs/kararlar.md |

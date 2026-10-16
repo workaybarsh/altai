@@ -1,15 +1,17 @@
-# aybars_says
+# aybars_says — sesli yerel yapay zekâ sohbet botu (Windows)
 
-Gerçek zamanlı, **tamamen yerel** ve yapay zekâ destekli sesli sohbet botu (Windows).
+Gerçek zamanlı, **tamamen yerel** ve yapay zekâ destekli **sesli** sohbet botu (Windows): mikrofonla
+konuşursun, bot **sesle** yanıt verir.
 
-> Eski adı: **mamidChats Chatbot**. Bu depo yalnızca **plandır**. Kurulum veya çalışan kod
-> içermez; amaç, üzerine inşa edeceğimiz mimariyi ve kararları tek yerde toplamaktır.
+> Eski adı: **mamidChats Chatbot**. Bu depo ağırlıklı olarak **plandır**; ilk çalışan araç olarak
+> `agent/mtp_inject.py` (MTP başlığı enjeksiyonu) eklenmiştir.
 
 ## Durum
 
-**Taslak (planlama) — `v0.2-plan`. Kod yok.**
+**Taslak (planlama) — `v0.2-plan`. Ağırlıklı plan; çalışan ilk araç `agent/mtp_inject.py`.**
 
-- Bu repo bir **tasarım/plan dokümanıdır**; çalışan uygulama içermez.
+
+- Bu repo ağırlıklı olarak bir **tasarım/plan dokümanıdır**; ilk çalışan araç `agent/mtp_inject.py`.
 - Her karar, gerekçesi ve **vazgeçilen alternatif** burada not edilir (bkz. [`docs/kararlar.md`](docs/kararlar.md)).
 - Ölçüm ve AR-GE sonuçları geldikçe aynı belgeler güncellenir.
 - Hedef (`<1 sn`) tutmazsa izlenecek yollar hazır: **daha küçük whisper.cpp modeli** (`small`/`medium`),
@@ -76,6 +78,22 @@ tüketicileri var. Burada **tek sahipli** bir hat kurulur.
 | Hedef gecikme | < 1 sn |
 
 Tüm kararlar: [`docs/kararlar.md`](docs/kararlar.md).
+
+## Çalışan ilk araç: MTP enjeksiyonu
+
+Quant GGUF, MTP/`nextn` başlığını **içermez**; bu yüzden `--spec-type draft-mtp` tek başına
+llama.cpp'yi açmaz. `agent/mtp_inject.py` başlığı taban `huihui-ai` deposundan geri ekler (kayıpsız;
+yalnızca 15 MTP tensoru, ana ağırlıklara dokunmaz).
+
+```powershell
+# Durum denetimi
+pwsh -File scripts/mtp-dogrula.ps1 -Gguf "models\Huihui-Qwen3.5-9B-abliterated.i1-Q5_K_M.gguf"
+
+# Eksikse enjekte et
+pwsh -File scripts/mtp-dogrula.ps1 -Gguf "models\Huihui-Qwen3.5-9B-abliterated.i1-Q5_K_M.gguf" -Inject
+```
+
+Ayrıntı, kabul testleri (T1–T7) ve yedekler: [`docs/mtp-dogrulama.md`](docs/mtp-dogrulama.md).
 
 ## Faz planı
 
