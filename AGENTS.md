@@ -135,6 +135,11 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 13. **`whisper-server` `-ng` ister.** GPU'yu denerse `0xC0000409` (fast-fail) ile çöker; STT CPU'da
     olduğu için `-ng` hem doğru hem gerekli. `llama-server`'da `--reasoning-budget-message` gibi
     boşluk içeren değerler tırnaklanmalı ve `=` biçimi kullanılmamalı.
+14. **Python çıktısını PowerShell `1>` ile yönlendirme.** Windows PowerShell çıktıyı **UTF-16** yazar ve
+    Python'un UTF-8 baytlarını OEM (cp850) sanıp Türkçe karakterleri bozar (`ı` → `─▒`). JSON'u
+    **dosyaya Python yazsın** (`--json-out` / `Path.write_text(encoding="utf-8")`) ya da `pwsh` +
+    `-Encoding utf8` kullanın; aksi halde yoldaki `ı` bozulur ve `Test-Path` / `os.path.exists`
+    **yanlış `False`** verir (ölçümü yanıltır — 2026-10-17'de tam bunu yaşadık).
 
 ## 7. Değişiklik kontrol listesi
 
