@@ -193,6 +193,7 @@ def test_synth_chatterbox_keeps_first_when_retry_longer(monkeypatch, tmp_path):
 
     assert calls["n"] == 2
     assert res["retried"] is True
+    assert res["first_audio_seconds"] == pytest.approx(9.6, abs=0.01)   # ilk deneme
     assert res["audio_seconds"] == pytest.approx(9.6, abs=0.01)   # ilki daha kisa
     assert res["retry_audio_seconds"] == pytest.approx(12.0, abs=0.01)
     assert not os.path.exists(str(out) + ".retry.wav")            # gecici dosya silindi

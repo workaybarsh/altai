@@ -301,7 +301,8 @@ kararsızlığı** (§3 ile uyumlu).
 `synth_chatterbox(..., guard=True)` (varsayılan; `--no-guard` kapatır):
 - `beklenen ≈ harf_sayısı / 14` sn (TR, min 0,4) → `audio_guard_limit = max(3×beklenen, beklenen + 2)`
 - üretilen ses sınırı aşarsa **aynı cümle BİR kez daha** üretilir ve **kısa olan** tutulur
-  (retry seed'i `seed+1`; sonuca `retried` / `long_tail_guard` / `audio_limit_seconds` yazılır)
+  (retry seed'i `seed+1`; sonuca `retried` / `long_tail_guard` / `audio_limit_seconds` /
+  `first_audio_seconds` / `retry_audio_seconds` / `guard_extra_seconds` yazılır)
 
 ### 11.2 GPU ölçümü (24 üretim: 6 kısa cümle × 4 seed)
 
@@ -332,7 +333,8 @@ kararsızlığı** (§3 ile uyumlu).
 (24 üretimlik ölçümde **6 kayıt** etkilendi). Düzeltildi: `out` artık gerçek dosyayı gösteriyor
 (eski yol `retry_out`'ta), pipeline'a dosya adına düşen **savunma** eklendi; telafi maliyeti
 `guard_extra_seconds` alanına yazılıyor. Regresyon ağı: **fix'siz kodda 3 test düşüyor**, fix'le
-**39 test** geçiyor.
+**39 test** geçiyor. Fix sonrası GPU koşusu **tekrarlandı**: **24/24 `out` dosyası diskte VAR**,
+`retry_out` yalnızca eski geçici yolu tutuyor, kalan `.retry.wav` **yok** (7 tetiklenme, 0 hata).
 
 Offline testler: **39** (`python -m pytest -q`); guard senaryoları (retry/kısa-olan-tutma/kapalı/yol
 bütünlüğü) taklit modelle kapsanıyor, GPU gerekmiyor.
