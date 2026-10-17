@@ -113,6 +113,8 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
    MTP'yi içermez; indirmede `mtp_inject.py` ile geri eklenir (bkz. [`docs/mtp-dogrulama.md`](docs/mtp-dogrulama.md)).
 8. **ASR/TTS CPU'yu paylaşır.** Aynı anda çalışmazlar (dinleme vs konuşma), ama gürültülü makinede ölçüm şart.
 9. **whisper.cpp thread sayısı.** Fiziksel çekirdek sayısına göre ayarlanır; aşırı thread hızı düşürür.
+10. **Ağır GPU işi çalıştırmadan önce kullanıcıya SOR.** Model yükleme / GPU'da çıkarım gibi işler
+    kullanıcıyı bekletebilir veya başka GPU işiyle çakışır; izinsiz başlatma.
 
 ## 7. Değişiklik kontrol listesi
 
