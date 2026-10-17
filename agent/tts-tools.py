@@ -107,8 +107,8 @@ def _save_wav(wav, path, sr):
 
 
 def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
-                     exaggeration=0.5, cfg=0.5, t3_model="v3", seed=None, tr_fix=False,
-                     respell=False):
+                     exaggeration=0.5, cfg=0.5, t3_model="v3", seed=None, tr_fix=True,
+                     respell=True):
     import torch
 
     if seed is not None:
@@ -126,11 +126,13 @@ def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
         from chatterbox.tts import ChatterboxTTS
         model = ChatterboxTTS.from_pretrained(device=device)
 
-    if tr_fix and (lang or "").lower() == "tr":
-        # TR diakritik/sorun: tokenizer NFKD+kucultme yamasini uygula (bkz. ust fonksiyon)
-        install_tr_tokenizer_fix(model.tokenizer)
-    if respell and (lang or "").lower() == "tr":
-        text = tr_respell(text)  # 'ş' -> 'sh' fonetik ipucu
+    # TR icin duzeltmeler OTOMATIK (lang='tr'): tokenizer NFKD yamasi + 'ş'->'sh' respell.
+    # (kapatmak icin tr_fix/respell = False; CLI: --chatterbox-tr-raw)
+    if (lang or "").lower() == "tr":
+        if tr_fix:
+            install_tr_tokenizer_fix(model.tokenizer)
+        if respell:
+            text = tr_respell(text)
 
     kwargs = {}
     if voice_prompt:
@@ -254,10 +256,8 @@ def main(argv=None) -> int:
     ap.add_argument("--exaggeration", type=float, default=0.5)
     ap.add_argument("--cfg", type=float, default=0.5)
     ap.add_argument("--t3-model", default="v3", help="chatterbox coklu dil checkpoint: v3 | v2")
-    ap.add_argument("--chatterbox-tr-fix", action="store_true",
-                    help="chatterbox TR: tokenizer NFKD/kucultme yamasini uygula (diakritik sorunu)")
-    ap.add_argument("--chatterbox-tr-respell", action="store_true",
-                    help="chatterbox TR: 'ş'->'sh' fonetik ipucu (respell)")
+    ap.add_argument("--chatterbox-tr-raw", action="store_true",
+                    help="chatterbox TR duzeltmelerini KAPAT (tr_fix+respell); test/AB icin")
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--voxcpm-model", default="Trendyol/Trendyol-TTS", help="voxcpm HF model id")
     ap.add_argument("--voxcpm-cfg", type=float, default=2.0)
@@ -277,7 +277,7 @@ def main(argv=None) -> int:
         if args.backend == "chatterbox":
             res = synth_chatterbox(text, args.out, args.lang, args.voice_prompt, args.device,
                                    args.exaggeration, args.cfg, args.t3_model, args.seed,
-                                   args.chatterbox_tr_fix, args.chatterbox_tr_respell)
+                                   not args.chatterbox_tr_raw, not args.chatterbox_tr_raw)
         elif args.backend == "voxcpm":
             res = synth_voxcpm(text, args.out, args.voxcpm_model, args.voxcpm_cfg,
                                args.voxcpm_steps, args.device, not args.no_optimize)

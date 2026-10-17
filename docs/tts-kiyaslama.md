@@ -228,8 +228,9 @@ Kalan tek hata ("çalışan"→"çalıyan") için **respell** denendi: **`ş` �
 - `respell-base` (normal "ş") → hâlâ "çalıyan" ❌
 - **`respell-main-sh2` (ş→sh)** → **doğru** ✅ (kulak testi)
 
-→ `agent/tts-tools.py`'ye opsiyonel ön-işleme eklendi: **`--chatterbox-tr-respell`** (`ş→sh`; `tr_fix`
-ile birlikte kullanılır). Offline test: `python -m pytest -q` → **20 test**.
+→ `agent/tts-tools.py`'ye ön-işleme **otomatik** eklendi: `--backend chatterbox --lang tr` verilince
+**tr_fix + respell kendiliğinden** uygulanır (kapatmak için `--chatterbox-tr-raw`). Offline test:
+`python -m pytest -q` → **20 test**.
 
 > Not: bazı üretimlerde model "forcing EOS" uyarısı verip bir kelimeyi bozabiliyor (üretim varyansı) →
 > şüpheli örnekte aynı cümle yeniden üretilir. Respell, "ş"yi düzeltir; **ğ/ç için gerekirse** benzer

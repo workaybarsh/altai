@@ -196,7 +196,7 @@ Ses → yazı, **whisper.cpp** ile yapılır (Qwen3-ASR kullanılmaz).
 | `agent/llm-run.ps1` | `llama-server`, MTP, VRAM kapısı |
 | `agent/asr-tools.py` | whisper.cpp çıkarımı |
 | `agent/tts-tools.py` | Chatterbox / voxcpm (Trendyol-TTS) / Piper / SAPI |
-| `agent/pipeline.ps1` | ASR → LLM (akış) → cümle → TTS |
+| `agent/pipeline.ps1` | ASR → LLM → cümle → TTS (**iskelet**, `agent/pipeline.ps1`) |
 | `agent/audio-capture.ps1` | winmm kayıt |
 
 ## 9. Riskler ve açık sorular

@@ -87,7 +87,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 | ✅ | `agent/asr-tools.py` | 16 kHz mono dönüştürme + **whisper.cpp** çıkarımı + gecikme/RTF ölçümü |
 | ✅ | `scripts/asr-olcum.ps1` | Faz 2 ASR ölçüm koşum takımı (sarmalayıcı) |
 | ✅ | `agent/tts-tools.py` | Takas edilebilir TTS: Chatterbox / **voxcpm** (Trendyol-TTS, TR) / Piper / SAPI |
-| ⬜ | `agent/pipeline.ps1` | Boru hattı: ASR → LLM (akış) → cümle bölme → TTS |
+| ✅ | `agent/pipeline.ps1` | Boru hattı (**iskelet**): ASR → LLM (HTTP) → cümle bölme → TTS |
 | ⬜ | `agent/audio-capture.ps1` | winmm `mciSendString` ile bağımlılıksız kayıt |
 | ✅ | `tests/` | pytest (MTP enjeksiyonu + ASR araçları) |
 | ✅ | `scripts/`, `docs/` | kurulum/tanı, belgeler |
