@@ -249,3 +249,24 @@ Kalan tek hata ("çalışan"→"çalıyan") için **respell** denendi: **`ş` �
 ön-işleme**. En ucuz (0,5B, ~2 GB, MIT) ve en hızlı (RTF <1) motor olduğu için, **Türkçe
 ön-normalizasyon (yol 2)** ile ciddi biçimde geri kazanılabilir. Ayrıca yukarıdaki benchmark'taki
 "kısa cümlede çökme" bulgusunun bir kısmı da bu diakritik/tokenizer hatasından kaynaklanıyor olabilir.
+
+## 10. Pipeline TTS çalıştırma modları (2026-10-17)
+
+Aynı 4 cümle (LLM çıktısı), RTX 5060 Ti, `--lang tr` (tr-fix + respell otomatik):
+
+| Mod | Toplam (4 cümle) | Not |
+|---|---|---|
+| Cümle-cümle (her cümle ayrı süreç) | **106,6 sn** | her cümlede torch import (~8 sn) + model yükleme (~13 sn) **tekrar eder** |
+| Toplu (`--batch-file`, tek süreç) | **48,4 sn** | yükleme (19,8 sn) **bir kez** + üretim 28,6 sn |
+| **Kalıcı sunucu (`--serve`, sıcak)** | **16,6–18,5 sn** | yükleme **yok**; yalnız üretim |
+
+**Tam pipeline** (ASR → LLM → TTS), kalıcı sunucularla (`whisper-server` + `tts-server` + `llama-server`):
+**tur başına ~23–27 sn** (3 cümle: ASR ~10 sn + LLM ~4 sn + TTS ~9–12 sn), hiç model yüklemesi yok.
+
+- Chatterbox üretim **RTF ~1,2–1,4** (gerçek zamandan yavaş) → üretim süresi çıktı sesinden uzun;
+  ilk ses `<1 sn` hedefi TTS tarafında da tutmuyor.
+- ⚠️ Çok kısa cümlede ("Merhaba!") RTF ~3,7'ye çıkıyor ve 9,6 sn'lik ses üretilebiliyor
+  (kısa cümle kararsızlığı, bkz. §3).
+- ⚠️ **CUDA tuzağı:** bozuk/uygunsuz girdi `device-side assert` ile CUDA bağlamını **kalıcı** bozar;
+  sunucu yeniden başlatılmalıdır. Bu yüzden `tts-server` artık metin olmayan öğeleri **400** ile
+  reddeder ve `/health` içinde `fatal` alanıyla bunu bildirir.

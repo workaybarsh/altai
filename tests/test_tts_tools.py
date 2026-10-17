@@ -114,6 +114,72 @@ def test_synth_chatterbox_mtl_sets_language_id(monkeypatch, tmp_path):
     assert saved["path"] == str(out)
 
 
+def test_server_texts_normalizes_single_and_list():
+    assert tts.server_texts({"texts": "tek"}) == ["tek"]
+    assert tts.server_texts({"text": "tek"}) == ["tek"]
+    assert tts.server_texts({"texts": ["a", " b ", ""]}) == ["a", "b"]
+    assert tts.server_texts({}) == []
+    # metin olmayan oge reddedilir (bozuk girdi CUDA baglamini zehirleyebiliyor)
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        tts.server_texts({"texts": [{"value": "x"}]})
+
+
+def test_tts_server_health_and_tts(monkeypatch, tmp_path):
+    """Kalici sunucu: /health ve /tts calisir (model fonksiyonlari taklit; GPU gerekmez)."""
+    import threading
+    import time
+    import types
+    import urllib.request
+
+    monkeypatch.setattr(tts, "load_chatterbox", lambda **kw: object())
+
+    def fake_synth(text, out_wav, *a, **k):
+        os.makedirs(os.path.dirname(os.path.abspath(out_wav)), exist_ok=True)
+        with open(out_wav, "wb") as f:
+            f.write(b"RIFF")
+        return {"out": out_wav, "audio_seconds": 1.0, "tts_seconds": 0.5, "text": text}
+
+    monkeypatch.setattr(tts, "synth_chatterbox", fake_synth)
+
+    def post(url, data):
+        # Windows loopback'ta nadir gorulen gecici reset'lere karsi yeniden dene
+        last = None
+        for _ in range(3):
+            try:
+                req = urllib.request.Request(url, data=data, method="POST",
+                                             headers={"Content-Type": "application/json"}) if data else url
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    return json.loads(r.read().decode("utf-8"))
+            except (ConnectionError, OSError) as exc:
+                last = exc
+                time.sleep(0.2)
+        raise last
+
+    args = types.SimpleNamespace(backend="chatterbox", lang="tr", device="cpu", t3_model="v3",
+                                 exaggeration=0.5, cfg=0.5, seed=None, chatterbox_tr_raw=False,
+                                 voice_prompt=None, host="127.0.0.1", port=0)
+    srv = tts.create_server(args)
+    srv.ensure_model()
+    port = srv.server_address[1]
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        health = post(f"http://127.0.0.1:{port}/health", None)
+        assert health["ok"] is True
+        assert health["loaded"] is True
+
+        body = json.dumps({"texts": ["bir", "iki"], "out_dir": str(tmp_path), "prefix": "s_"}).encode()
+        out = post(f"http://127.0.0.1:{port}/tts", body)
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+    assert out["ok"] is True
+    assert out["count"] == 2 and out["failed"] == 0
+    assert os.path.exists(tmp_path / "s_1.wav")
+    assert os.path.exists(tmp_path / "s_2.wav")
+
+
 def test_json_handles_emoji_without_crashing(tmp_path):
     """LLM ciktisindaki emoji konsol kodlamasinda print'i patlatmamali (toplu modu dusururdu)."""
     out = tmp_path / "j.json"

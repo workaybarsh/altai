@@ -101,47 +101,47 @@ def test_build_whisper_command_threads_optional():
     assert "-t" in asr.build_whisper_command("w", "m", "f", "tr", 6)
 
 
-def test_server_mode_uses_http_and_needs_no_model(tmp_path, capsys):
-    """whisper-server modu: --server-url verilince --model gerekmez ve HTTP ile cikarim yapilir."""
-    import http.server
-    import json as _json
-    import threading
+def test_server_mode_posts_multipart_and_needs_no_model(tmp_path, monkeypatch, capsys):
+    """whisper-server modu: --server-url verilince --model gerekmez; /inference'e multipart POST edilir.
+
+    Gercek soket yerine urlopen taklit edilir (Windows loopback reset'lerinden bagimsiz, deterministik).
+    """
+    import urllib.request
 
     captured = {}
 
-    class Handler(http.server.BaseHTTPRequestHandler):
-        def do_POST(self):
-            n = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(n)
-            captured["path"] = self.path
-            captured["ctype"] = self.headers.get("Content-Type", "")
-            captured["has_riff"] = b"RIFF" in body
-            resp = _json.dumps({"text": "merhaba dunya"}).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(resp)))
-            self.end_headers()
-            self.wfile.write(resp)
+    class FakeResp:
+        def __init__(self, body):
+            self._b = body
 
-        def log_message(self, *a):  # sessiz
-            pass
+        def read(self):
+            return self._b
 
-    srv = http.server.HTTPServer(("127.0.0.1", 0), Handler)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    try:
-        wav = make_wav(tmp_path / "srv.wav", seconds=1.0)
-        code = asr.main(["--wav", wav, "--server-url", f"http://127.0.0.1:{srv.server_port}"])
-        out = _json.loads(capsys.readouterr().out)
-    finally:
-        srv.shutdown()
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        captured["url"] = req.full_url
+        captured["ctype"] = req.headers.get("Content-type") or req.headers.get("Content-Type")
+        captured["body"] = req.data
+        return FakeResp(json.dumps({"text": "merhaba dunya"}).encode("utf-8"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    wav = make_wav(tmp_path / "srv.wav", seconds=1.0)
+    code = asr.main(["--wav", wav, "--server-url", "http://127.0.0.1:8081"])
+    out = json.loads(capsys.readouterr().out)
 
     assert code == 0
     assert out["ok"] is True
     assert out["results"][0]["text"] == "merhaba dunya"
-    assert captured["path"] == "/inference"
-    assert "multipart/form-data" in captured["ctype"]
-    assert captured["has_riff"] is True
     assert out["results"][0]["audio_seconds"] == pytest.approx(1.0, abs=1e-6)
+    assert captured["url"].endswith("/inference")
+    assert "multipart/form-data" in captured["ctype"]
+    assert b"RIFF" in captured["body"]
 
 
 def test_server_mode_dead_endpoint_reports_error(tmp_path, capsys):

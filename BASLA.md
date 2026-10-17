@@ -20,11 +20,14 @@ Proje: aybars_says — sesli (STT+TTS) yerel yapay zekâ sohbet uygulaması.
 - Düşünme (reasoning) AÇIK: --reasoning on --reasoning-budget 256 (max_tokens düşünmeyi de kapsar)
 
 ⚠️ <1 sn hedefi bu donanımda tutmuyor: ASR turbo ~10 sn (encoder 30 sn penceresi), TTS RTF ~1,29.
-⏳ SIRADAKİ İŞ: (a) TTS'i kalıcı süreç yap (whisper-server gibi), (b) ASR model/CPU-GPU kararı,
-   (c) gerçek konuşmayla Türkçe WER. Ayrıntı: DURUM.md, docs/faz2-sonuc.md, docs/kararlar.md #19
-   Kurulumlar: tools\whisper, tools\llama, models\ (turbo f16 + turbo-q5_0 + base/small/medium + MTP'li 9B)
+✅ Yükleme tekrarı ÇÖZÜLDÜ: kalıcı sunucular (whisper-server 8081 + tts-server 8082 + llama-server 8080)
+   → tam pipeline tur başına ~23–27 sn, hiç model yüklemesi yok.
+⏳ SIRADAKİ İŞ: (a) ASR model/CPU-GPU kararı (small/medium? GPU?), (b) gerçek konuşmayla Türkçe WER,
+   (c) akışlı hat (ilk cümlede LLM+TTS başlatma). Ayrıntı: DURUM.md, docs/faz2-sonuc.md, docs/kararlar.md #19/#20
+   Kurulumlar: tools\whisper, tools\llama, models\ (turbo-q5_0 + MTP'li 9B)
 
-Hazır araçlar: agent/mtp_inject.py, agent/asr-tools.py (--batch? hayir; --server-url var),
-agent/tts-tools.py (chatterbox / voxcpm / piper / sapi + --batch-file), agent/pipeline.ps1,
-scripts/whisper-server.ps1 — testler: python -m pytest -q (30 test)
+Hazır araçlar: agent/mtp_inject.py; agent/asr-tools.py (--server-url); agent/tts-tools.py
+(chatterbox / voxcpm / piper / sapi + --batch-file + --serve); agent/pipeline.ps1
+(-AsrServerUrl / -TtsServerUrl); scripts/whisper-server.ps1; scripts/tts-server.ps1
+— testler: python -m pytest -q (32 test)
 ```

@@ -41,7 +41,12 @@ Repo: `github.com/workaybarsh/aybars_says`
   medium **7,5 sn** (1,35 · iyi) · turbo **11,0 sn** (1,98 · en iyi).
 - **Kalıcı ASR süreci:** `scripts/whisper-server.ps1` + `asr-tools.py --server-url`
   → model bellekte kalır, yükleme tekrarı biter (turbo sunucuda ~9,9 sn).
-- Testler: `python -m pytest -q` → **30 test** geçiyor
+- **Kalıcı TTS süreci (2026-10-17):** `tts-tools.py --serve` (HTTP) + `scripts/tts-server.ps1`
+  → Chatterbox bellekte kalır. Ölçüm (aynı 4 cümle): cümle-cümle **106,6 sn** → toplu 48,4 sn →
+  **kalıcı sunucu 16,6–18,5 sn** (~6×). Tam pipeline, üç sunucu açıkken **tur başına ~23–27 sn**
+  (ASR ~10 + LLM ~4 + TTS ~9–12), **hiç model yüklemesi yok**.
+  Ayrıntı: [`docs/tts-kiyaslama.md`](docs/tts-kiyaslama.md) §10.
+- Testler: `python -m pytest -q` → **32 test** geçiyor
 
 ## Önemli kararlar (özet)
 - **LLM:** Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M **+ MTP zorunlu** (kararlar #12, #13)
@@ -51,14 +56,15 @@ Repo: `github.com/workaybarsh/aybars_says`
   **Trendyol-TTS** çevrimdışı (~5,6 GB, RTF ~3,4). (kararlar #16/#18)
 
 ## Açık işler / sıradaki adımlar
-0. ✅ **Pipeline + toplu TTS bağlandı ve ölçüldü (2026-10-17).** Ancak:
+0. ✅ **Pipeline + toplu TTS + kalıcı sunucular bağlandı ve ölçüldü (2026-10-17).** Ancak:
    - ⚠️ **`<1 sn` hedefi bu donanımda tutmuyor.** ASR turbo ~10 sn (whisper encoder her istekte
      **30 sn penceresini** encode ediyor → kısa seste sabit maliyet); Chatterbox GPU'da **RTF ~1,29**
-     (gerçek zamandan yavaş).
+     (gerçek zamandan yavaş). Kalıcı sunucularla **tur ~23–27 sn** (yükleme yok).
    - **Sıradaki karar (biri/birkaçı):**
-     - **TTS'i de kalıcı süreç yap** (whisper-server gibi) → yükleme tekrarı biter, cümle başı ~4–7 sn.
      - **ASR'de `small`/`medium`** (hız↔doğruluk takası) veya whisper'ı GPU'ya al (mimari kuralı değişir).
-     - `piper` (CPU, hızlı ama robotik) canlı yedek olarak TTS'te denenebilir.
+     - **`piper`** (CPU, hızlı ama robotik) canlı yedek TTS olarak denenebilir.
+     - Akışlı/parçalı hat (ilk ses için LLM+TTS'i ilk cümlede başlatma) — gecikmeyi algılanan
+       düzeye indirir (boru hattı ilkesi #7).
 1. **Türkçe TTS:** Trendyol-TTS ağır (VRAM ~5,6 GB, RTF ~3) → çevrimdışı. Canlı TR adayları
    **CosyVoice2 / XTTS-v2** (hız + VRAM ölçülmeli). Beğenilmezse Piper.
 2. **Fish S2 Pro:** yalnız izole WSL denemesi (Türkçe zayıf, silindi; WSL kaldı).
@@ -71,9 +77,16 @@ Repo: `github.com/workaybarsh/aybars_says`
   `pipeline.ps1`/betikler ASCII tutulduğu için 5.1'de de çalışır.
 - **Araçlar:** `tools\whisper\Release\whisper-cli.exe` (+ `whisper-server.exe`, `whisper-quantize.exe`,
   `whisper-bench.exe`), `tools\llama\llama-server.exe` (b11669, CUDA 13.4).
-- **Modeller** (`models\`): `ggml-large-v3-turbo.bin` (f16, 1,55 GB),
-  **`ggml-large-v3-turbo-q5_0.bin` (547 MB)**, `ggml-{base,small,medium}.bin` + `-q5_0` quant'ları,
-  `Huihui-...i1-Q5_K_M.gguf` (6,5 GB, **MTP enjekte edildi**).
+- **Modeller** (`models\`): **`ggml-large-v3-turbo-q5_0.bin` (547 MB, varsayılan ASR)** ve
+  `Huihui-...i1-Q5_K_M.gguf` (6,7 GB, **MTP enjekte edildi**).
+  *(2026-10-17 disk temizliği: turbo **f16**, base/small/medium (+q5_0) ve HF'deki **Trendyol-TTS**
+  ile whisper-v3-turbo cache'leri silindi — **~15 GB** kazanıldı. Gerekirse HF/`whisper-quantize` ile
+  yeniden üretilir; `voxcpm` çevrimdışı backend'i o zamana kadar çalışmaz.)*
+- **Kalıcı sunucular (canlı hat için önerilen):**
+  `llama-server` (port 8080) + `scripts\whisper-server.ps1` (8081, **`-ng`**) +
+  `scripts\tts-server.ps1` (8082, tts-venv). Pipeline:
+  `pipeline.ps1 -AsrServerUrl http://127.0.0.1:8081 -TtsServerUrl http://127.0.0.1:8082`.
+  ⚠️ `tts-server` bozuk girdide CUDA bağlamını kaybederse `/health` `fatal` döner → yeniden başlat.
 - **llama-server (MTP) çalıştırma** (düşünme açık, bütçe 256; port 8080). ⚠️
   `--reasoning-budget-message` boşluk içerdiği için **tırnaklanmalı ve `=` biçimi kullanılmamalı**:
   ```

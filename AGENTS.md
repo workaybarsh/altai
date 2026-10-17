@@ -94,7 +94,8 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 | ✅ | `agent/asr-tools.py` | 16 kHz mono dönüştürme + **whisper.cpp** çıkarımı (tek-atım **veya** `--server-url` ile kalıcı `whisper-server`) + gecikme/RTF ölçümü |
 | ✅ | `scripts/asr-olcum.ps1` | Faz 2 ASR ölçüm koşum takımı (sarmalayıcı) |
 | ✅ | `scripts/whisper-server.ps1` | Kalıcı `whisper-server` başlat/durdur (`-ng`, port 8081); model bellekte kalır |
-| ✅ | `agent/tts-tools.py` | Takas edilebilir TTS: Chatterbox / **voxcpm** (Trendyol-TTS, TR) / Piper / SAPI + **toplu mod** (`--batch-file`) |
+| ✅ | `scripts/tts-server.ps1` | Kalıcı TTS sunucusu (`tts-tools.py --serve`, port 8082); Chatterbox bellekte kalır |
+| ✅ | `agent/tts-tools.py` | Takas edilebilir TTS: Chatterbox / **voxcpm** (Trendyol-TTS, TR) / Piper / SAPI + **toplu mod** (`--batch-file`) + **kalıcı sunucu** (`--serve`) |
 | ✅ | `agent/pipeline.ps1` | Boru hattı: ASR → LLM (HTTP) → cümle bölme → **toplu** TTS (model tek yükleme) |
 | ⬜ | `agent/audio-capture.ps1` | winmm `mciSendString` ile bağımlılıksız kayıt |
 | ✅ | `tests/` | pytest (MTP enjeksiyonu + ASR araçları) |
@@ -149,6 +150,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 
 | Tarih | Değişiklik | Dosyalar |
 |---|---|---|
+| 2026-10-17 | **Kalıcı TTS sunucusu eklendi** (`tts-tools.py --serve` + `scripts/tts-server.ps1`, port 8082). Ölçüm (4 cümle): cümle-cümle **106,6 sn** → toplu 48,4 sn → **kalıcı sunucu 16,6–18,5 sn**. Tam pipeline üç sunucuyla **tur başına ~23–27 sn**. Bozuk girdi CUDA bağlamını bozabildiği için sunucu metin olmayan öğeleri 400 ile reddeder, `/health` `fatal` bildirir. **32 test**. Disk temizliği ~15 GB. | agent/tts-tools.py, agent/pipeline.ps1, scripts/tts-server.ps1, tests/, docs/tts-kiyaslama.md, DURUM.md, AGENTS.md |
 | 2026-10-17 | **Pipeline toplu TTS'e bağlandı + ASR optimize edildi.** `pipeline.ps1` artık tüm cümleleri tek çağrıda üretir (`--batch-file`+`--out-prefix`); ölçüm 4 cümlede **106,6 → 48,4 sn**. ASR: **f16→q5_0 quant** + mantıksal thread → **RTF 4,2→1,9**; `-ac` reddedildi (tekrar döngüsü). Model karşılaştırması (base/small/medium/turbo). **`whisper-server` kalıcı süreç** desteği (`--server-url`). Kritik bug: `uses_mtl` NameError + emoji `UnicodeEncodeError` (toplu üretimi düşürüyordu) düzeltildi. **30 test**. PS7 kuruldu (7.6.7). | agent/pipeline.ps1, agent/tts-tools.py, agent/asr-tools.py, scripts/whisper-server.ps1, scripts/asr-olcum.ps1, tests/, docs/faz2-sonuc.md, docs/kararlar.md, DURUM.md, BASLA.md, AGENTS.md |
 | 2026-10-17 | **Pipeline uçtan uca çalıştı** (whisper→llama-server MTP→Chatterbox). LLM ölçüldü: ~103 tok/sn, TTFT ~0,3 sn, MTP acceptance ~0,7. Düşünme açık+bütçe 256 doğrulandı. `tts-tools.py`'ye **toplu mod** eklendi. | agent/pipeline.ps1, agent/tts-tools.py, DURUM.md, .gitignore, AGENTS.md |
 | 2026-10-17 | **Chatterbox "ş" respell çözümü:** `ş→sh` kulak testinde doğrulandı → TR için otomatik (`--lang tr`). **20 test**. | agent/tts-tools.py, tests/test_tts_tools.py, docs/tts-kiyaslama.md, docs/kararlar.md, DURUM.md, AGENTS.md |

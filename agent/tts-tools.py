@@ -19,6 +19,11 @@ Ornek:
 Toplu (model BIR KEZ yuklenir; pipeline icin varsayilan):
   python agent/tts-tools.py --backend chatterbox --lang tr --batch-file cumleler.txt \
       --out-prefix logs/pipeline/tts_ --json-out logs/pipeline/tts_batch.json
+
+Kalici sunucu (model bellekte kalir; her turda yukleme tekrari olmaz):
+  python agent/tts-tools.py --serve --backend chatterbox --lang tr --device cuda --port 8082
+  # GET  /health          -> {"ok":true,"loaded":true,...}
+  # POST /tts  {"texts":["..."],"lang":"tr","out_dir":"<mutlak>","prefix":"tts_"}
 """
 from __future__ import annotations
 
@@ -275,6 +280,156 @@ def synth_sapi(text, out_wav):
             "tts_seconds": round(dt, 3), "rtf": round((dt / secs) if secs else float("inf"), 3)}
 
 
+# ------------------------------------------------------------------ HTTP sunucu (kalici model)
+
+def server_texts(req: dict):
+    """`/tts` isteğinden cumle listesini cikarir (tek metin / dizi / 'texts'/'text').
+
+    Not: `ConvertTo-Json` tek elemanli diziyi bazen duz metne indirir -> burada normalize edilir.
+    Yalnizca **str** ogeler kabul edilir; aksi halde 400 ile reddedilir (bozuk girdi, CUDA
+    baglamini zehirleyebiliyor).
+    """
+    texts = req.get("texts")
+    if texts is None:
+        texts = req.get("text")
+    if texts is None:
+        return []
+    if isinstance(texts, str):
+        texts = [texts]
+    out = []
+    for t in texts:
+        if not isinstance(t, str):
+            raise ValueError(f"metin listesinde metin olmayan oge: {type(t).__name__}")
+        t = t.strip()
+        if t:
+            out.append(t)
+    return out
+
+
+def create_server(args):
+    """HTTP sunucusunu olusturur (`serve_forever` CAGRILMAZ; test edilebilir)."""
+    import http.server
+
+    state = {"model": None, "load_seconds": None, "fatal": None}
+
+    def ensure_model():
+        if state["model"] is None:
+            if args.backend != "chatterbox":
+                raise RuntimeError("sunucu modu su an yalnizca chatterbox icin")
+            t0 = time.perf_counter()
+            state["model"] = load_chatterbox(lang=args.lang, device=args.device,
+                                             t3_model=args.t3_model)
+            state["load_seconds"] = round(time.perf_counter() - t0, 2)
+        return state["model"]
+
+    def _is_fatal(exc) -> bool:
+        """CUDA/accelerator hatasi baglami zehirler: sunucu yeniden baslatilmali."""
+        s = f"{type(exc).__name__}: {exc}".lower()
+        return "cuda" in s or "acceleratorerror" in s or "device-side assert" in s
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        # HTTP/1.0 (varsayilan): her istekte baglanti kapanir -> keep-alive kaynakli
+        # nadir socket reset'lerini onler; turn basina 1 istek icin maliyet yok.
+        def _send(self, code, payload):
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            if self.path.rstrip("/") == "/health":
+                fatal = state["fatal"]
+                self._send(200, {"ok": fatal is None, "backend": args.backend,
+                                 "loaded": state["model"] is not None,
+                                 "load_seconds": state["load_seconds"],
+                                 "fatal": fatal})
+            else:
+                self._send(404, {"ok": False, "error": "bulunamadi"})
+
+        def do_POST(self):
+            if self.path.rstrip("/") != "/tts":
+                self._send(404, {"ok": False, "error": "bulunamadi"})
+                return
+            n = int(self.headers.get("Content-Length", 0) or 0)
+            try:
+                req = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
+            except Exception as exc:
+                self._send(400, {"ok": False, "error": f"gecersiz JSON: {exc}"})
+                return
+            try:
+                texts = server_texts(req)
+            except Exception as exc:
+                self._send(400, {"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+                return
+            if not texts:
+                self._send(400, {"ok": False, "error": "metin bos (text/texts)"})
+                return
+            out_dir = req.get("out_dir") or "."
+            prefix = req.get("prefix") or "tts_"
+            lang = req.get("lang", args.lang)
+            voice_prompt = req.get("voice_prompt", args.voice_prompt)
+            try:
+                model = ensure_model()
+                os.makedirs(out_dir, exist_ok=True)
+                results = []
+                for i, t in enumerate(texts, 1):
+                    out_i = os.path.join(out_dir, f"{prefix}{i}.wav")
+                    try:
+                        if not any(ch.isalnum() for ch in t):
+                            raise ValueError("metin gecerli harf icermiyor (emoji/sembol?)")
+                        r = synth_chatterbox(t, out_i, lang, voice_prompt, args.device,
+                                            args.exaggeration, args.cfg, args.t3_model, args.seed,
+                                            not args.chatterbox_tr_raw, not args.chatterbox_tr_raw,
+                                            model=model)
+                        r["ok"] = True
+                    except Exception as exc:
+                        r = {"ok": False, "out": out_i,
+                             "error": f"{type(exc).__name__}: {exc}"}
+                        if _is_fatal(exc):
+                            # CUDA baglami bozuldu: sonraki istekler de basarisiz olur -> isaretle
+                            state["fatal"] = r["error"]
+                    r["index"] = i
+                    r["text"] = t[:200]
+                    results.append(r)
+                good = [r for r in results if r.get("ok")]
+                total_audio = round(sum(o.get("audio_seconds", 0) or 0 for o in good), 3)
+                total_gen = round(sum(o.get("tts_seconds", 0) or 0 for o in good), 3)
+                self._send(200, {"ok": bool(good), "backend": args.backend, "batch": True,
+                                 "count": len(results), "failed": len(results) - len(good),
+                                 "load_seconds": state["load_seconds"],
+                                 "total_tts_seconds": total_gen,
+                                 "total_audio_seconds": total_audio,
+                                 "rtf": round(total_gen / total_audio, 3) if total_audio else None,
+                                 "results": results})
+            except Exception as exc:
+                self._send(500, {"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+        def log_message(self, *a):  # sessiz (tqdm zaten var)
+            pass
+
+    srv = http.server.ThreadingHTTPServer((args.host, args.port), Handler)
+    srv.ensure_model = ensure_model   # sunucu acilisinda isitmak icin
+    return srv
+
+
+def serve(args) -> int:
+    """Modeli BIR KEZ yukler ve HTTP ile hizmet verir (kalici surec; yukleme tekrari yok)."""
+    try:
+        srv = create_server(args)
+        srv.ensure_model()   # modeli istekleri beklemeden simdi yukle (ilk istek yavas olmasin)
+    except Exception as exc:
+        _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, args.json_out)
+        return 3
+    print(json.dumps({"ok": True, "serving": True, "backend": args.backend,
+                      "host": srv.server_address[0], "port": srv.server_address[1]},
+                     ensure_ascii=False))
+    sys.stdout.flush()
+    srv.serve_forever()
+    return 0
+
+
 # ------------------------------------------------------------------ CLI
 
 def main(argv=None) -> int:
@@ -304,7 +459,15 @@ def main(argv=None) -> int:
                     help="her satirda bir cumle; --out-prefix ile birlikte kullanilir")
     ap.add_argument("--out-prefix", default=None,
                     help="toplu modda cikti oneki: <onek>1.wav, <onek>2.wav ...")
+    # --- kalici sunucu (model bellekte kalir; yukleme tekrari yok) ---
+    ap.add_argument("--serve", action="store_true",
+                    help="HTTP sunucusu olarak calis (model bir kez yuklenir); /health ve /tts")
+    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--port", type=int, default=8082)
     args = ap.parse_args(argv)
+
+    if args.serve:
+        return serve(args)
 
     # ---------------- TOPLU MOD (chatterbox): model tek yukleme ----------------
     if args.batch_file:

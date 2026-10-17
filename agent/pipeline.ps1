@@ -8,9 +8,14 @@
 #   boylece model BIR KEZ yuklenir (her cumlede ~13 sn + torch import ~8 sn tekrar etmez).
 #   Beklenen kazanc: 2 cumlede ~57 sn -> ~15 sn. Baska backend'lerde cumle-cumle moda dusulur.
 #
+# TTS KALICI SUNUCU (-TtsServerUrl): model surekli bellekte kalir (scripts\tts-server.ps1);
+#   her turda yalniz uretim kalir (yukleme tekrari tamamen biter). Oncelikli onerilen yol.
+#
 # Ornek:
 #   pwsh -File agent\pipeline.ps1 -Text "Merhaba, nasilsin?" -Lang tr
 #   pwsh -File agent\pipeline.ps1 -Wav kayit.wav -Model models\ggml-large-v3-turbo-q5_0.bin -AsrThreads 12
+#   pwsh -File agent\pipeline.ps1 -Wav kayit.wav -AsrServerUrl http://127.0.0.1:8081 `
+#        -TtsServerUrl http://127.0.0.1:8082
 #
 # Not: Bilesen (whisper / llama-server) yoksa DURUSTCE hata verir, uydurmaz.
 #      TTS backend'leri (chatterbox/voxcpm) icin -Python olarak tts-venv python'u verin.
@@ -25,6 +30,7 @@ param(
   [int]$AsrThreads = 0,
   [string]$Lang = "tr",
   [string]$Backend = "chatterbox",
+  [string]$TtsServerUrl,
   [string]$Device = "cuda",
   [string]$Python = "python",
   [string]$OutDir = "logs\pipeline",
@@ -122,7 +128,28 @@ function Invoke-TtsSingle([string]$Sentence, [int]$Index) {
 
 if ($sentences.Count -gt 0) {
     $batchOk = $false
-    if ($Backend -eq "chatterbox") {
+    $batch = $null
+
+    if ($Backend -eq "chatterbox" -and $TtsServerUrl) {
+        # --- KALICI SUNUCU: model zaten bellekte -> yalniz uretim ---
+        $body = @{ texts = @([string[]]$sentences); lang = $Lang; out_dir = $outRoot; prefix = "tts_" }
+        if ($VoicePrompt) { $body.voice_prompt = $VoicePrompt }
+        try {
+            $batch = Invoke-RestMethod -Method Post -Uri "$TtsServerUrl/tts" -TimeoutSec 600 `
+                -ContentType "application/json; charset=utf-8" `
+                -Body ([Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 6)))
+            if ($batch.ok) {
+                Write-Host ("[TTS] SUNUCU: {0} cumle, uretim {1} sn, RTF {2}" -f `
+                    $batch.count, $batch.total_tts_seconds, $batch.rtf)
+            } else {
+                Write-Warning "TTS sunucusu basarisiz: $($batch.error)"
+            }
+        } catch {
+            Write-Warning "TTS sunucusuna ulasilamadi ($TtsServerUrl). 'scripts\tts-server.ps1' calisiyor mu? Detay: $($_.Exception.Message)"
+        }
+    }
+    elseif ($Backend -eq "chatterbox") {
+        # --- TOPLU MOD (tek surec): model cagri basina bir kez yuklenir ---
         $batchFile = Join-Path $outRoot "tts_batch.txt"
         $jsonFile = Join-Path $outRoot "tts_batch.json"
         $errFile = Join-Path $outRoot "tts_batch.err.txt"
@@ -142,17 +169,21 @@ if ($sentences.Count -gt 0) {
             if ($batch.ok) {
                 Write-Host ("[TTS] TOPLU: {0} cumle, model yukleme {1} sn, uretim {2} sn, RTF {3}" -f `
                     $batch.count, $batch.load_seconds, $batch.total_tts_seconds, $batch.rtf)
-                foreach ($r in $batch.results) {
-                    if ($r.ok -and (Test-Path $r.out)) { $wavs += $r.out }
-                    else { Write-Warning "TTS cumle $($r.index) basarisiz: $($r.error)" }
-                }
-                $batchOk = $true
             } else {
                 Write-Warning "TTS toplu mod basarisiz: $($batch.error)"
             }
         } else {
             Write-Warning "TTS toplu mod basarisiz (cikis $code); hata: $errFile"
         }
+    }
+
+    # toplu/sunucu sonuclarini topla (ortak)
+    if ($batch -and $batch.ok) {
+        foreach ($r in $batch.results) {
+            if ($r.ok -and (Test-Path $r.out)) { $wavs += $r.out }
+            else { Write-Warning "TTS cumle $($r.index) basarisiz: $($r.error)" }
+        }
+        $batchOk = $true
     }
     if (-not $batchOk) {
         if ($Backend -eq "chatterbox") { Write-Warning "Toplu TTS olmadi; cumle-cumle (yavas) moda dusuluyor." }

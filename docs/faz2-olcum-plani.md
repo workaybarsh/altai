@@ -92,7 +92,7 @@ Faz 2 geçince **Faz 3** (LLM 9B i1-Q5_K_M + MTP + prefix cache) → **Faz 4** (
 | `scripts/asr-olcum.ps1` | Toplu ölçüm koşum takımı; `logs\faz2-asr-sonuc.json` yazar |
 
 ```powershell
-pwsh -File scripts/asr-olcum.ps1 -WavDir "tests\assets" -Model "models\ggml-large-v3-turbo.bin" -Repeat 10
+pwsh -File scripts/asr-olcum.ps1 -WavDir "tests\assets" -Model "models\ggml-large-v3-turbo-q5_0.bin" -Repeat 10
 ```
 
 Gerçek whisper.cpp yoksa araç **dürüstçe** `ok=false` döner (uydurmaz). Testler: `python -m pytest -q`.
