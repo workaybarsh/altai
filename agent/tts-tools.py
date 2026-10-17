@@ -43,6 +43,12 @@ def _read_text(args) -> str:
     return (args.text or "").strip()
 
 
+def _read_lines(path: str):
+    """Coklu cumle dosyasi: her satir bir cumle (bos satirlar atlanir)."""
+    with open(path, "r", encoding="utf-8") as f:
+        return [ln.strip() for ln in f if ln.strip()]
+
+
 # ------------------------------------------------------------------ Turkce metin (Chatterbox icin)
 
 _TR_UPPER_TO_LOWER = str.maketrans({"I": "ı", "İ": "i"})
@@ -106,25 +112,29 @@ def _save_wav(wav, path, sr):
         return "torchaudio"
 
 
-def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
-                     exaggeration=0.5, cfg=0.5, t3_model="v3", seed=None, tr_fix=True,
-                     respell=True):
-    import torch
-
-    if seed is not None:
-        torch.manual_seed(seed)
-
+def load_chatterbox(lang=None, device="cuda", t3_model="v3"):
+    """Chatterbox modelini bir kez yukler (toplu uretim icin)."""
     uses_mtl = bool(lang)
     if uses_mtl:
         from chatterbox.mtl_tts import ChatterboxMultilingualTTS
         try:
-            model = ChatterboxMultilingualTTS.from_pretrained(device=device, t3_model=t3_model)
+            return ChatterboxMultilingualTTS.from_pretrained(device=device, t3_model=t3_model)
         except TypeError:
             # Kurulu surum t3_model'i tanimiyor olabilir; sade cagri
-            model = ChatterboxMultilingualTTS.from_pretrained(device=device)
-    else:
-        from chatterbox.tts import ChatterboxTTS
-        model = ChatterboxTTS.from_pretrained(device=device)
+            return ChatterboxMultilingualTTS.from_pretrained(device=device)
+    from chatterbox.tts import ChatterboxTTS
+    return ChatterboxTTS.from_pretrained(device=device)
+
+
+def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
+                     exaggeration=0.5, cfg=0.5, t3_model="v3", seed=None, tr_fix=True,
+                     respell=True, model=None):
+    import torch
+
+    if model is None:
+        model = load_chatterbox(lang=lang, device=device, t3_model=t3_model)
+    if seed is not None:
+        torch.manual_seed(seed)
 
     # TR icin duzeltmeler OTOMATIK (lang='tr'): tokenizer NFKD yamasi + 'ş'->'sh' respell.
     # (kapatmak icin tr_fix/respell = False; CLI: --chatterbox-tr-raw)
@@ -266,7 +276,50 @@ def main(argv=None) -> int:
     ap.add_argument("--piper", default=None)
     ap.add_argument("--piper-model", default=None)
     ap.add_argument("--json-out", default=None)
+    # --- toplu uretim (model BIR KEZ yuklenir) ---
+    ap.add_argument("--batch-file", default=None,
+                    help="her satirda bir cumle; --out-prefix ile birlikte kullanilir")
+    ap.add_argument("--out-prefix", default=None,
+                    help="toplu modda cikti oneki: <onek>1.wav, <onek>2.wav ...")
     args = ap.parse_args(argv)
+
+    # ---------------- TOPLU MOD (chatterbox): model tek yukleme ----------------
+    if args.batch_file:
+        lines = _read_lines(args.batch_file)
+        if not lines:
+            _json({"ok": False, "error": "batch dosyasi bos"}, args.json_out)
+            return 2
+        prefix = args.out_prefix or os.path.splitext(args.out)[0]
+        os.makedirs(os.path.dirname(os.path.abspath(prefix)) or ".", exist_ok=True)
+        try:
+            if args.backend != "chatterbox":
+                raise RuntimeError("toplu mod su an yalnizca chatterbox icin")
+            t0 = time.perf_counter()
+            model = load_chatterbox(lang=args.lang, device=args.device, t3_model=args.t3_model)
+            load_s = time.perf_counter() - t0
+            outs = []
+            for i, line in enumerate(lines, 1):
+                out_i = f"{prefix}{i}.wav"
+                r = synth_chatterbox(line, out_i, args.lang, args.voice_prompt, args.device,
+                                     args.exaggeration, args.cfg, args.t3_model, args.seed,
+                                     not args.chatterbox_tr_raw, not args.chatterbox_tr_raw,
+                                     model=model)
+                r["index"] = i
+                r["text"] = line[:200]
+                outs.append(r)
+        except Exception as exc:
+            _json({"ok": False, "backend": args.backend,
+                   "error": f"{type(exc).__name__}: {exc}"}, args.json_out)
+            return 3
+        total_audio = round(sum(o["audio_seconds"] for o in outs), 3)
+        total_gen = round(sum(o["tts_seconds"] for o in outs), 3)
+        payload = {"ok": True, "backend": args.backend, "batch": True,
+                   "count": len(outs), "load_seconds": round(load_s, 2),
+                   "total_tts_seconds": total_gen, "total_audio_seconds": total_audio,
+                   "rtf": round(total_gen / total_audio, 3) if total_audio else None,
+                   "results": outs}
+        _json(payload, args.json_out)
+        return 0
 
     text = _read_text(args)
     if not text:

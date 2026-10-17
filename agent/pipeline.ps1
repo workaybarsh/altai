@@ -13,6 +13,7 @@
 param(
   [string]$Wav,
   [string]$Text,
+  [string]$TextFile,
   [string]$Server = "http://127.0.0.1:8080",
   [string]$Model,
   [string]$Lang = "tr",
@@ -20,7 +21,8 @@ param(
   [string]$Device = "cuda",
   [string]$Python = "python",
   [string]$OutDir = "logs\pipeline",
-  [int]$MaxTokens = 200,
+  [int]$MaxTokens = 1024,
+  [switch]$NoThink,
   [switch]$Play
 )
 
@@ -32,6 +34,7 @@ $outRoot = Join-Path $repo $OutDir
 New-Item -ItemType Directory -Force -Path $outRoot | Out-Null
 
 # --- 1) ASR: metne cevir ---
+if ($TextFile) { $Text = [System.IO.File]::ReadAllText($TextFile).Trim() }
 if (-not $Text) {
     if (-not $Wav) { throw "Ne -Text ne -Wav verildi." }
     if (-not $Model) { throw "ASR icin -Model (whisper .bin) gerekli." }
@@ -49,6 +52,8 @@ $payload = @{
     )
     max_tokens  = $MaxTokens
     temperature = 0.7
+    # Dusunme VARSAYILAN ACIK (NoThink ile kapatilir). Not: max_tokens dusunmeyi de kapsar.
+    chat_template_kwargs = @{ enable_thinking = (-not $NoThink) }
 } | ConvertTo-Json -Depth 6
 try {
     $resp = Invoke-RestMethod -Method Post -Uri "$Server/v1/chat/completions" `
@@ -58,6 +63,12 @@ try {
     throw "LLM sunucusuna ulasilamadi ($Server). 'llama-server' calisiyor mu? Detay: $($_.Exception.Message)"
 }
 $answer = $resp.choices[0].message.content
+if (-not $answer) {
+    if ($resp.choices[0].finish_reason -eq "length" -and $resp.choices[0].message.reasoning_content) {
+        throw "LLM cevabi token limitinde kesildi (dusunme acik; -MaxTokens artir ya da -NoThink kullan)."
+    }
+    throw "LLM bos cevap dondurdu."
+}
 Write-Host "[LLM] $answer"
 
 # --- 3) Cumlelere bol ---
@@ -70,10 +81,21 @@ foreach ($s in $sentences) {
     $i++
     $txtFile = Join-Path $outRoot "tts_$i.txt"
     $wavFile = Join-Path $outRoot "tts_$i.wav"
-    Set-Content -Path $txtFile -Value $s.Trim() -Encoding utf8
+    [System.IO.File]::WriteAllText($txtFile, $s.Trim(), (New-Object System.Text.UTF8Encoding($false)))
+    $jsonFile = Join-Path $outRoot "tts_$i.json"
+    $errFile = Join-Path $outRoot "tts_$i.err.txt"
     $ttsArgs = @($tts, "--backend", $Backend, "--lang", $Lang, "--text-file", $txtFile,
-                 "--out", $wavFile, "--device", $Device)
-    $ttsOut = & $Python @ttsArgs | ConvertFrom-Json
+                 "--out", $wavFile, "--device", $Device, "--json-out", $jsonFile)
+    $oldEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"   # native stderr (tqdm/uyari) hata sayilmasin
+    & $Python @ttsArgs 2> $errFile
+    $ttsCode = $LASTEXITCODE
+    $ErrorActionPreference = $oldEap
+    if ($ttsCode -ne 0 -or -not (Test-Path $jsonFile)) {
+        Write-Warning "TTS ($Backend) basarisiz (cikis $ttsCode); hata: $errFile"
+        continue
+    }
+    $ttsOut = Get-Content -Raw $jsonFile | ConvertFrom-Json
     if (-not $ttsOut.ok) { Write-Warning "TTS ($Backend) basarisiz: $($ttsOut.error)"; continue }
     $wavs += $wavFile
     Write-Host "[TTS] $wavFile"

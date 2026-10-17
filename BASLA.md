@@ -13,22 +13,17 @@ Proje: aybars_says — sesli (STT+TTS) yerel yapay zekâ sohbet uygulaması.
 Önce şu dosyaları oku: DURUM.md, README.md, AGENTS.md, docs/kararlar.md, docs/mimari.md.
 
 Özet durum:
-- LLM: Huihui-Qwen3.5-9B i1-Q5_K_M + MTP zorunlu (GPU)
-- STT: whisper.cpp large-v3-turbo (CPU)
-- TTS: Chatterbox (EN çok iyi; TR diakritik sorunu TESPİT EDİLDİ ve KOD ile düzeltildi → --chatterbox-tr-fix)
-- Trendyol-TTS (VoxCPM2 + TR LoRA): TR anlaşılır (WER ~0,08) ama ağır (~5,6 GB VRAM, RTF ~3)
-  → çevrimdışı motor (backend: voxcpm). Fish S2-Pro: silindi (izole WSL denemesiydi).
-- Bağımsız TR TTS kıyası (arXiv:2610.06057) işlendi (karar #17)
-- Donanım profilleri: A (8 GB/16 GB) · B (16 GB/32 GB); LLM bağlamı 4k — docs/mimari.md §7.1
+- LLM: Huihui-Qwen3.5-9B i1-Q5_K_M + MTP (GPU'da, llama-server) — ÖLÇÜLDÜ: ~103 tok/sn, TTFT ~0,3 sn
+- STT: whisper.cpp large-v3-turbo — ⚠️ yavaş (RTF ~4,2, CPU, thread ayarsız)
+- TTS: Chatterbox (TR: tr-fix + respell OTOMATİK, --lang tr) — canlı aday; Trendyol = çevrimdışı
+- **Pipeline uçtan uca ÇALIŞIYOR** (agent/pipeline.ps1): ASR → LLM → cümle → TTS
+- Düşünme (reasoning) AÇIK: --reasoning on --reasoning-budget 256 (max_tokens düşünmeyi de kapsar)
 
-⏳ SIRADAKİ İŞ (GPU boşalınca, öncelik): **SES ÇIKIŞI testi** — Chatterbox TR düzeltmesinin A/B
-   ölçümü (doğru TR × yama açık/kapalı, ASCII) → Whisper geri-çevirim + WER + kulak.
-   Plan: docs/tts-kiyaslama.md §9.1. Ön koşul: Chatterbox ağırlıkları ~2 GB (ilk çalıştırmada iner).
-
-Canlı TR TTS hâlâ açık — adaylar: CosyVoice3 (finetune gerekir), XTTS-v2 (TR'de iyi iddiası),
-Piper (CPU, hızlı ama robotik).
+⏳ SIRADAKİ İŞ: pipeline'ı tts-tools.py'nin YENİ toplu moduna bağla
+   (--batch-file + --out-prefix → model tek yükleme; 57 sn → ~15 sn). Sonra ASR thread ayarı.
+   Kurulumlar: tools\whisper (whisper-cli), tools\llama (llama-server), models\ (turbo + MTP'li 9B GGUF)
 
 Hazır araçlar: agent/mtp_inject.py, agent/asr-tools.py, agent/tts-tools.py
-(chatterbox / voxcpm / piper / sapi), scripts/mtp-dogrula.ps1, scripts/asr-olcum.ps1
-— testler: python -m pytest -q (19 test)
+(chatterbox / voxcpm / piper / sapi + --batch-file), agent/pipeline.ps1
+— testler: python -m pytest -q (20 test)
 ```

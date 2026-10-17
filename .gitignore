@@ -20,6 +20,7 @@ secrets/
 
 # Model / ses dosyaları (repoda tutulmaz)
 models/
+tools/
 *.gguf
 *.onnx
 *.bin

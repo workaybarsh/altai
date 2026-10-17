@@ -34,10 +34,19 @@ Repo: `github.com/workaybarsh/aybars_says`
   **çevrimdışı** (~5,6 GB, RTF ~3,4). (kararlar #16/#18)
 
 ## Açık işler / sıradaki adımlar
-0. ✅ **Ses çıkışı testi yapıldı (2026-10-17).** Kulak testi: **Chatterbox (tr-fix + respell)** ve
-   **Trendyol** — **ikisi de iyi**. Chatterbox hafif/hızlı (~2 GB, RTF ~1,4) → **canlı aday**;
-   Trendyol native TR ama ağır (~5,6 GB, RTF ~3,4) → **çevrimdışı**. Ayrıntı:
-   `docs/tts-kiyaslama.md` §9.2–9.3. **Sıradaki:** canlı hat kararını Chatterbox lehine netleştirmek.
+0. ✅ **Pipeline uçtan uca ÇALIŞTI (2026-10-17)** — gerçek bileşenlerle:
+   `whisper-cli` → `llama-server` (MTP) → cümle bölme → Chatterbox TTS.
+   Çıktı: `logs\pipeline\tts_1.wav`, `tts_2.wav`.
+   - **LLM/MTP doğrulandı:** draft acceptance ~0,63–0,75, **~103 tok/sn**, TTFT ~0,30 sn
+     (preset: `--spec-type draft-mtp -c 4096 -ngl 99`)
+   - **Düşünme AÇIK** (kullanıcı tercihi): `--reasoning on --reasoning-budget 256
+     --reasoning-budget-message "Dusunmeyi bitir ve kisa Turkce cevabi yaz."` → ~0,26 sn.
+     ⚠️ `max_tokens` düşünmeyi de kapsar; bütçesiz bırakılırsa cevap hiç gelmez (`finish_reason=length`).
+   - ⚠️ **ASR yavaş:** 5,5 sn ses → 23,6 sn (**RTF ~4,2**, CPU, thread ayarsız).
+   - ⚠️ **TTS her cümlede modeli yeniden yüklüyor** (~13 sn + torch import ~8 sn) → toplam 57 sn.
+     `tts-tools.py`'ye **toplu mod** eklendi (`--batch-file` + `--out-prefix`, model tek yükleme);
+     **pipeline.ps1 henüz bu moda bağlanmadı**.
+   - **Sıradaki iş:** pipeline'ı `--batch-file`'a geçir (57 sn → ~15 sn), sonra ASR thread ayarı.
 1. **Türkçe TTS:** Trendyol-TTS değerlendirildi → **anlaşılır** ama canlı hat için **ağır**
    (VRAM ~5,6 GB, RTF ~3). `agent/tts-tools.py`'ye `voxcpm` backend eklendi (çevrimdışı/yüksek
    kalite). Ayrıntı: `docs/tts-tr-sonuc.md`.
@@ -48,6 +57,13 @@ Repo: `github.com/workaybarsh/aybars_says`
 4. **Faz 3:** LLM + MTP + prefix cache
 
 ## Ortam notları
+- **Araçlar (2026-10-17 kuruldu):** `tools\whisper\Release\whisper-cli.exe` (b5454),
+  `tools\llama\llama-server.exe` (b11669, CUDA 13.4 + cudart). **Modeller:** `models\`
+  (`ggml-large-v3-turbo.bin` 1,55 GB; `Huihui-Qwen3.5-9B-abliterated.i1-Q5_K_M.gguf` 6,5 GB
+  — **MTP enjekte edildi**, `nextn_predict_layers=1`, block 33). `tools/` ve `models/` gitignore'da.
+- **llama-server çalıştırma:** `tools\llama\llama-server.exe -m models\<gguf> --spec-type draft-mtp
+  -c 4096 -ngl 99 --reasoning on --reasoning-budget 256 ...` (port 8080)
+- **Whisper ikilisi** `tools\whisper\Release\` altında (PATH'te değil) → `asr-tools.py --whisper ...` ver
 - **WSL:** Ubuntu 24.04, `E:\wsl\ubuntu-24.04`, RTX 5060 Ti GPU geçişi çalışıyor (Python 3.12)
 - **TTS venv:** ⚠️ 2026-10-17: `%TEMP%\opencode\tts-venv` silindi (restart) → **yeniden kuruldu:
   `%USERPROFILE%\tts-venv`** — `torch 2.11.0+cu128` (sm_120, CUDA True), `chatterbox-tts 0.1.7`,
