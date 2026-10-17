@@ -9,16 +9,18 @@ konuşursun, bot **sesle** yanıt verir.
 ## Durum
 
 **Taslak (planlama) — `v0.2-plan`. Çalışan araçlar: `agent/mtp_inject.py`, `agent/asr-tools.py`,
-`agent/tts-tools.py`, `agent/pipeline.ps1` (uçtan uca ASR→LLM→toplu TTS).**
+`agent/tts-tools.py`, `agent/pipeline.ps1` (uçtan uca ASR→LLM→toplu TTS) ve **akışlı hat**
+`agent/llm-stream.py` + `agent/pipeline-stream.ps1` (ilk cümle oluşur oluşmaz TTS, ilke #7).**
 
 
 - Bu repo ağırlıklı olarak bir **tasarım/plan dokümanıdır**; çalışan araçlar `agent/` altındadır.
 - Her karar, gerekçesi ve **vazgeçilen alternatif** burada not edilir (bkz. [`docs/kararlar.md`](docs/kararlar.md)).
 - Ölçüm ve AR-GE sonuçları geldikçe aynı belgeler güncellenir.
-- ⚠️ **Ölçüldü (2026-10-17): `<1 sn` hedefi bu donanımda (Ryzen 5 3600 / RTX 5060 Ti) tutmuyor.**
-  STT `large-v3-turbo` CPU'da ~11 sn (q5_0, encoder 30 sn penceresi); `base`/`small` hızlı ama
-  Türkçe doğruluğu zayıf. TTS Chatterbox GPU'da RTF ~1,29. Ayrıntı ve seçenekler:
-  [`docs/faz2-sonuc.md`](docs/faz2-sonuc.md), [`docs/kararlar.md`](docs/kararlar.md) #19.
+- ⚠️ **Ölçüldü (2026-10-17/18): `<1 sn` hedefi bu donanımda (Ryzen 5 3600 / RTX 5060 Ti) tutmuyor.**
+  STT `large-v3-turbo` CPU'da ~10 sn (q5_0, encoder 30 sn penceresi); `base`/`small` hızlı ama
+  Türkçe doğruluğu zayıf. TTS Chatterbox GPU'da RTF ~1,2. **Akışlı hatla ilk ses 18,8 sn → 7,05–7,60 sn**
+  (LLM+TTS; uçtan uca ASR ile 13,4 sn). Ayrıntı: [`docs/akishli-hat.md`](docs/akishli-hat.md),
+  [`docs/faz2-sonuc.md`](docs/faz2-sonuc.md), [`docs/kararlar.md`](docs/kararlar.md) #19/#22.
 
 ## Hedef
 
@@ -123,6 +125,7 @@ orada ölçülür (`large-v3-turbo` yeterli mi, `medium`/`small`'a mı inilmeli)
 | [`docs/faz2-sonuc.md`](docs/faz2-sonuc.md) | Faz 2 ölçüm sonuçları (duman testi kaydı) |
 | [`docs/tts-tr-sonuc.md`](docs/tts-tr-sonuc.md) | Türkçe TTS (Trendyol-TTS) değerlendirmesi: VRAM, RTF, geri-çevirim WER |
 | [`docs/tts-kiyaslama.md`](docs/tts-kiyaslama.md) | Türkçe TTS kıyası (Chatterbox vs CosyVoice/OmniVoice/VoxCPM2/VITS; arXiv:2610.06057) |
+| [`docs/akishli-hat.md`](docs/akishli-hat.md) | Akışlı hat: tasarım, kullanım, ölçüm (ilk ses 18,8 → 7,05–7,60 sn) ve sınırlar |
 | [`docs/kararlar.md`](docs/kararlar.md) | Karar günlüğü |
 | [`AGENTS.md`](AGENTS.md) | Geliştirici/ajan altyapı rehberi |
 

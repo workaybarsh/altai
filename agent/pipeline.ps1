@@ -52,12 +52,24 @@ if ($TextFile) { $Text = [System.IO.File]::ReadAllText($TextFile).Trim() }
 if (-not $Text) {
     if (-not $Wav) { throw "Ne -Text ne -Wav verildi." }
     if (-not $Model -and -not $AsrServerUrl) { throw "ASR icin -Model (whisper .bin) ya da -AsrServerUrl gerekli." }
-    $asrArgs = @($asr, "--wav", $Wav, "--lang", $Lang)
+    # JSON'u DOSYADAN oku (UTF-8). Native stdout'u boruya baglamak PS 5.1'de
+    # kodlama bozar (tuzak #14): Turkce karakterler yanlis cozulur.
+    $asrJson = Join-Path $outRoot "asr.json"
+    $asrErr = Join-Path $outRoot "asr.err.txt"
+    $asrArgs = @($asr, "--wav", $Wav, "--lang", $Lang, "--out", $asrJson)
     if ($AsrServerUrl) { $asrArgs += @("--server-url", $AsrServerUrl) }
     else { $asrArgs += @("--model", $Model) }
     if ($Whisper) { $asrArgs += @("--whisper", $Whisper) }
     if ($AsrThreads -gt 0) { $asrArgs += @("--threads", $AsrThreads) }
-    $asrOut = & $Python @asrArgs | ConvertFrom-Json
+    $oldEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"   # native stderr (uyari/tqdm) hata sayilmasin
+    & $Python @asrArgs 1> $null 2> $asrErr
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $oldEap
+    if ($code -ne 0 -or -not (Test-Path $asrJson)) {
+        throw "ASR basarisiz (cikis $code); hata: $asrErr"
+    }
+    $asrOut = Get-Content -Raw -Encoding UTF8 $asrJson | ConvertFrom-Json
     if (-not $asrOut.ok) { throw "ASR basarisiz: $($asrOut.error)" }
     $r0 = $asrOut.results[0]
     Write-Host ("[ASR] {0} sn ses -> {1} sn (RTF {2}, threads {3})" -f `
@@ -121,7 +133,7 @@ function Invoke-TtsSingle([string]$Sentence, [int]$Index) {
         Write-Warning "TTS ($Backend) basarisiz (cikis $code); hata: $errFile"
         return $null
     }
-    $out = Get-Content -Raw $jsonFile | ConvertFrom-Json
+    $out = Get-Content -Raw -Encoding UTF8 $jsonFile | ConvertFrom-Json
     if (-not $out.ok) { Write-Warning "TTS ($Backend) basarisiz: $($out.error)"; return $null }
     return $wavFile
 }
@@ -132,20 +144,32 @@ if ($sentences.Count -gt 0) {
 
     if ($Backend -eq "chatterbox" -and $TtsServerUrl) {
         # --- KALICI SUNUCU: model zaten bellekte -> yalniz uretim ---
+        # Windows loopback'te nadir socket reset'i (WinError 10054) olusabiliyor -> 2 deneme.
+        # Yerel CLI yedegine DUSULMEZ: sunucu modeli VRAM'de tuttugu icin ikinci Chatterbox
+        # OOM olur; sessiz bozulma yerine durust hata verilir.
         $body = @{ texts = @([string[]]$sentences); lang = $Lang; out_dir = $outRoot; prefix = "tts_" }
         if ($VoicePrompt) { $body.voice_prompt = $VoicePrompt }
-        try {
-            $batch = Invoke-RestMethod -Method Post -Uri "$TtsServerUrl/tts" -TimeoutSec 600 `
-                -ContentType "application/json; charset=utf-8" `
-                -Body ([Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 6)))
-            if ($batch.ok) {
-                Write-Host ("[TTS] SUNUCU: {0} cumle, uretim {1} sn, RTF {2}" -f `
-                    $batch.count, $batch.total_tts_seconds, $batch.rtf)
-            } else {
-                Write-Warning "TTS sunucusu basarisiz: $($batch.error)"
+        $attempt = 0
+        while ($true) {
+            $attempt++
+            try {
+                $batch = Invoke-RestMethod -Method Post -Uri "$TtsServerUrl/tts" -TimeoutSec 600 `
+                    -ContentType "application/json; charset=utf-8" `
+                    -Body ([Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 6)))
+                break
+            } catch {
+                if ($attempt -ge 2) {
+                    throw "TTS sunucusuna ulasilamadi ($TtsServerUrl, $attempt deneme). 'scripts\tts-server.ps1' calisiyor mu? Detay: $($_.Exception.Message)"
+                }
+                Write-Warning "TTS sunucu baglantisi koptu; yeniden deneniyor ($attempt)."
+                Start-Sleep -Milliseconds 500
             }
-        } catch {
-            Write-Warning "TTS sunucusuna ulasilamadi ($TtsServerUrl). 'scripts\tts-server.ps1' calisiyor mu? Detay: $($_.Exception.Message)"
+        }
+        if ($batch.ok) {
+            Write-Host ("[TTS] SUNUCU: {0} cumle, uretim {1} sn, RTF {2}" -f `
+                $batch.count, $batch.total_tts_seconds, $batch.rtf)
+        } else {
+            throw "TTS sunucusu hata dondurdu: $($batch.error)"
         }
     }
     elseif ($Backend -eq "chatterbox") {
@@ -165,7 +189,7 @@ if ($sentences.Count -gt 0) {
         $code = $LASTEXITCODE
         $ErrorActionPreference = $oldEap
         if ($code -eq 0 -and (Test-Path $jsonFile)) {
-            $batch = Get-Content -Raw $jsonFile | ConvertFrom-Json
+            $batch = Get-Content -Raw -Encoding UTF8 $jsonFile | ConvertFrom-Json
             if ($batch.ok) {
                 Write-Host ("[TTS] TOPLU: {0} cumle, model yukleme {1} sn, uretim {2} sn, RTF {3}" -f `
                     $batch.count, $batch.load_seconds, $batch.total_tts_seconds, $batch.rtf)

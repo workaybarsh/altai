@@ -96,7 +96,9 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 | ✅ | `scripts/whisper-server.ps1` | Kalıcı `whisper-server` başlat/durdur (`-ng`, port 8081); model bellekte kalır |
 | ✅ | `scripts/tts-server.ps1` | Kalıcı TTS sunucusu (`tts-tools.py --serve`, port 8082); Chatterbox bellekte kalır |
 | ✅ | `agent/tts-tools.py` | Takas edilebilir TTS: Chatterbox / **voxcpm** (Trendyol-TTS, TR) / Piper / SAPI + **toplu mod** (`--batch-file`) + **kalıcı sunucu** (`--serve`) + **uzun-kuyruk guard** (süre sınırı + 1 retry; `--no-guard`) |
-| ✅ | `agent/pipeline.ps1` | Boru hattı: ASR → LLM (HTTP) → cümle bölme → **toplu** TTS (model tek yükleme) |
+| ✅ | `agent/pipeline.ps1` | Boru hattı (**toplu/referans yol**): ASR → LLM (HTTP) → cümle bölme → **toplu** TTS (model tek yükleme) |
+| ✅ | `agent/llm-stream.py` | **Akışlı tur motoru:** `llama-server` **SSE** → kademeli cümle bölme → cümle başına TTS → arka planda çalma; zaman damgalı JSON (`reasoning_content` yok sayılır, sembol-only atlanır, geçici ağ hatasında 2 deneme) |
+| ✅ | `agent/pipeline-stream.ps1` | **Akışlı** boru hattı (ASR + `llm-stream.py`): ilk sesi erken çıkarır (ilke #7) |
 | ⬜ | `agent/audio-capture.ps1` | winmm `mciSendString` ile bağımlılıksız kayıt |
 | ✅ | `tests/` | pytest (MTP enjeksiyonu + ASR araçları) |
 | ✅ | `scripts/`, `docs/` | kurulum/tanı, belgeler |
@@ -109,6 +111,11 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 | STT | ≤ 400 ms | whisper.cpp `large-v3-turbo` (gerekirse `medium`/`small`). Ölçüm: turbo ~10 sn, medium ~7,5 sn, small ~2,5 sn, base ~0,84 sn (CPU; ⚠️ hedef bu donanımda tutmuyor) |
 | LLM ilk token | ≤ 250 ms | Yerleşik model + KV prefix cache |
 | TTS ilk ses | ≤ 150 ms | Chatterbox/Piper, ilk cümlede. **Trendyol-TTS (`voxcpm`) canlı için uygun değil** (RTF ~3, ~5,6 GB VRAM) — çevrimdışı/yüksek kalite |
+
+> **Ölçüldü (2026-10-18, akışlı hat):** LLM+TTS'te **ilk ses 7,05–7,60 sn** (toplu akışta **18,8 sn**
+> = tur sonu; düşünme açıkken 9,52 sn). Uçtan uca (ASR turbo CPU 9,91 sn + akışlı) ilk ses **13,4 sn**.
+> Hedefin hâlâ çok üstünde: asıl darboğazlar **STT (~10 sn)** ve Chatterbox RTF ~1,2.
+> Ayrıntı: [`docs/akishli-hat.md`](docs/akishli-hat.md) §5.
 
 ## 6. Kritik tuzaklar
 
@@ -140,6 +147,11 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
     **dosyaya Python yazsın** (`--json-out` / `Path.write_text(encoding="utf-8")`) ya da `pwsh` +
     `-Encoding utf8` kullanın; aksi halde yoldaki `ı` bozulur ve `Test-Path` / `os.path.exists`
     **yanlış `False`** verir (ölçümü yanıltır — 2026-10-17'de tam bunu yaşadık).
+15. **`Get-Content -Raw` (PS 5.1) BOM'suz UTF-8 dosyayı ANSI okur.** Python'un `--json-out` ile
+    yazdığı JSON'daki yollarda `ı` bozulur → `Test-Path -LiteralPath` **yanlış `False`** döner
+    (akışlı hatta üretilen 3 WAV "kayıp" göründü, 2026-10-18). Çözüm: **`Get-Content -Raw -Encoding UTF8`**.
+    Ayrıca native aracın JSON'unu **stdout'tan boruyla** almak yerine `--out`/`--json-out` ile
+    **dosyaya** yazdır (ASR yolu artık böyle) — tuzak #14 ile aynı sınıf hata.
 
 ## 7. Değişiklik kontrol listesi
 
@@ -149,12 +161,13 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 - [ ] Dil modeli hâlâ yerleşik mi (boşaltılmıyor)?
 - [ ] GPU'ya LLM dışında bir şey taşınmadı mı?
 - [ ] TR ve ENG sürümleri tutarlı mı?
-- [ ] `README.md`, `docs/mimari.md`, `docs/mtp-dogrulama.md`, `docs/faz2-olcum-plani.md`, `docs/faz2-sonuc.md`, `docs/kararlar.md` güncel mi?
+- [ ] `README.md`, `docs/mimari.md`, `docs/mtp-dogrulama.md`, `docs/faz2-olcum-plani.md`, `docs/faz2-sonuc.md`, `docs/akishli-hat.md`, `docs/kararlar.md` güncel mi?
 
 ## 8. Değişiklik günlüğü
 
 | Tarih | Değişiklik | Dosyalar |
 |---|---|---|
+| 2026-10-18 | **Akışlı hat eklendi (ilke #7 kodda).** `agent/llm-stream.py`: `llama-server` **SSE** → kademeli cümle bölme → cümle başına TTS → **arka planda** çalma (oynatma thread'i; `reasoning_content` yok sayılır, sembol-only atlanır) + `agent/pipeline-stream.ps1` (ASR sarmalayıcısı). **Ölçüm (LLM+TTS): ilk ses 18,8 sn → 7,05–7,60 sn (~2,5×)**; düşünme açıkken 9,52 sn; uçtan uca (ASR turbo CPU 9,91 sn) 13,4 sn. **Bulgular:** kısa cümlede guard retry ilk sesi 13–18 sn'ye çıkarıyor — uç enerjisi analizi kuyruğun **fazladan konuşma** olduğunu gösterdi (uç kırpma çözmez). Ölçüm sırasında iki gerçek `ConnectionResetError` **şeffaf telafi** edildi. **Kritik düzeltme:** PS 5.1 `Get-Content -Raw` BOM'suz UTF-8'i ANSI okuyordu → akışlı WAV'lar "kayıp" (tuzak #15); ASR yolu `--out` + UTF-8'e alındı; TTS sunucu çağrısı **2 deneme** (yerel yedeğe düşüp OOM olmak yerine dürüst hata). **52 test.** | agent/llm-stream.py, agent/pipeline-stream.ps1, agent/pipeline.ps1, tests/test_llm_stream.py, docs/akishli-hat.md, docs/kararlar.md, DURUM.md, AGENTS.md |
 | 2026-10-17 | **Guard incelemesi: `out` yolu bug'ı bulundu ve düzeltildi.** Retry kazandığında `synth_chatterbox` silinmiş `.retry.wav` yolunu döndürüyordu; `pipeline.ps1` bu alanı `Test-Path` ile kullandığı için **düzeltilen cümle sessizce çalınamıyordu** (24 üretimlik ölçümde 6 kayıt). `out` artık gerçek dosya (eski yol `retry_out`), pipeline'a dosya adına düşen savunma, ölçüm için `guard_extra_seconds` eklendi. Regresyon ağı: fix'siz **3 test düşüyor**, fix'le **39 test**. | agent/tts-tools.py, agent/pipeline.ps1, tests/test_tts_tools.py, docs/tts-kiyaslama.md, DURUM.md |
 | 2026-10-17 | **TTS uzun-kuyruk (halüsinasyon) guard'ı eklendi.** İnceleme sonucu: "boşları göndermeme" filtreleri **çökmeyi** engelliyordu (`IndexError: max()` / CUDA `device-side assert`); taşan sesi kesen ise Chatterbox'ın kendi `alignment_stream_analyzer`'ı (`forcing EOS, long_tail=True`) — **iki ayrı mekanizma** (karar #21). Guard: `audio_guard_limit = max(3×beklenen, beklenen+2 sn)` (beklenen ≈ harf/14) aşılırsa cümleyi **1 kez** daha üret, **kısa olanı** tut (`--no-guard` kapatır). **GPU ölçümü (24 üretim, 4 seed): 7 tetiklenme (%29), en uzun yakalanan kuyruk 6,04 sn, 0 hata**; uzun cümlede hiç tetiklenmedi; kalıcı sunucu yolu doğrulandı. Boş/emoji-only girdi `ensure_speakable` ile modele **hiç gitmiyor** (parti düşmez). **38 test**. | agent/tts-tools.py, tests/test_tts_tools.py, docs/tts-kiyaslama.md, docs/kararlar.md, DURUM.md, AGENTS.md |
 | 2026-10-17 | **Kalıcı TTS sunucusu eklendi** (`tts-tools.py --serve` + `scripts/tts-server.ps1`, port 8082). Ölçüm (4 cümle): cümle-cümle **106,6 sn** → toplu 48,4 sn → **kalıcı sunucu 16,6–18,5 sn**. Tam pipeline üç sunucuyla **tur başına ~23–27 sn**. Bozuk girdi CUDA bağlamını bozabildiği için sunucu metin olmayan öğeleri 400 ile reddeder, `/health` `fatal` bildirir. **32 test**. Disk temizliği ~15 GB. | agent/tts-tools.py, agent/pipeline.ps1, scripts/tts-server.ps1, tests/, docs/tts-kiyaslama.md, DURUM.md, AGENTS.md |

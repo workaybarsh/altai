@@ -56,7 +56,22 @@ Repo: `github.com/workaybarsh/aybars_says`
   *(İnceleme sonrası düzeltme: retry kazandığında `out` alanı silinmiş `.retry.wav` yolunu
   gösteriyordu → `pipeline.ps1` o cümleyi `Test-Path`'te kaybediyordu; `out` artık gerçek dosya,
   pipeline'a savunma eklendi.)*
-- Testler: `python -m pytest -q` → **39 test** geçiyor
+- **Akışlı hat (2026-10-18, ilke #7 kodda):** `agent/llm-stream.py` (`llama-server` **SSE** → kademeli
+  cümle bölme → cümle oluşur oluşmaz TTS → ses **arka planda** çalınır) + `agent/pipeline-stream.ps1`.
+  **Ölçüm (LLM+TTS, aynı istem): ilk ses toplu 18,8 sn → akışlı 7,05–7,60 sn (~2,5×)** (ilk token
+  0,26 sn, ilk cümle ~0,5 sn; düşünme açıkken ilk ses 9,52 sn). Uçtan uca (ASR turbo CPU 9,91 sn +
+  akışlı) ilk ses **13,4 sn**. ⚠️ Kısa cümlede guard retry ilk sesi 13–18 sn'ye çıkarabiliyor;
+  uç enerjisi analizi kuyruğun **fazladan konuşma** olduğunu gösterdi (sessizlik değil → kırpma çözmez).
+  Ayrıntı: [`docs/akishli-hat.md`](docs/akishli-hat.md), karar #22.
+- **Dayanıklılık (2026-10-18):** cümle TTS'i geçici `WinError 10054` reset'inde **2 kez** denenir
+  (sentez idempotent); LLM akışı ortada koparsa **eldeki cümlelerle devam** (`stream_error`);
+  tek cümlenin TTS'i patlarsa tur düşmez (`failed_sentences`). Ölçüm sırasında iki gerçek reset
+  şeffaf şekilde telafi edildi.
+- **Kritik düzeltme (2026-10-18):** PS 5.1 `Get-Content -Raw` BOM'suz UTF-8 dosyayı **ANSI** okuyordu
+  → akışlı hatta üretilen 3 WAV "kayıp" görünüyordu (`Test-Path` yanlış `False`; tuzak #15). Tüm
+  JSON okumaları `-Encoding UTF8`'e alındı; ASR yolu `--out` + dosyadan okumaya çevrildi (stdout
+  boru hattı kodlamayı bozabiliyor).
+- Testler: `python -m pytest -q` → **52 test** geçiyor
 
 ## Önemli kararlar (özet)
 - **LLM:** Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M **+ MTP zorunlu** (kararlar #12, #13)
@@ -73,8 +88,10 @@ Repo: `github.com/workaybarsh/aybars_says`
    - **Sıradaki karar (biri/birkaçı):**
      - **ASR'de `small`/`medium`** (hız↔doğruluk takası) veya whisper'ı GPU'ya al (mimari kuralı değişir).
      - **`piper`** (CPU, hızlı ama robotik) canlı yedek TTS olarak denenebilir.
-     - Akışlı/parçalı hat (ilk ses için LLM+TTS'i ilk cümlede başlatma) — gecikmeyi algılanan
-       düzeye indirir (boru hattı ilkesi #7).
+     - ✅ **Akışlı hat YAPILDI (2026-10-18):** ilk ses 18,8 → **7,05–7,60 sn** (karar #22,
+       [`docs/akishli-hat.md`](docs/akishli-hat.md)).
+     - ⬜ **Yeni açık iş:** kısa cümlede guard retry'ı sınırlamak (ör. <20 harfte retry yok ya da
+       sınır tabanı) veya kısa ünlemler için hazır ses — ölçülüp karar verilecek.
 1. **Türkçe TTS:** Trendyol-TTS ağır (VRAM ~5,6 GB, RTF ~3) → çevrimdışı. Canlı TR adayları
    **CosyVoice2 / XTTS-v2** (hız + VRAM ölçülmeli). Beğenilmezse Piper.
 2. **Fish S2 Pro:** yalnız izole WSL denemesi (Türkçe zayıf, silindi; WSL kaldı).
@@ -96,6 +113,7 @@ Repo: `github.com/workaybarsh/aybars_says`
   `llama-server` (port 8080) + `scripts\whisper-server.ps1` (8081, **`-ng`**) +
   `scripts\tts-server.ps1` (8082, tts-venv). Pipeline:
   `pipeline.ps1 -AsrServerUrl http://127.0.0.1:8081 -TtsServerUrl http://127.0.0.1:8082`.
+  **Akışlı hat:** `pipeline-stream.ps1` (aynı sunucular; `-Play` ile üretilen sesi hemen çalar).
   ⚠️ `tts-server` bozuk girdide CUDA bağlamını kaybederse `/health` `fatal` döner → yeniden başlat.
 - **llama-server (MTP) çalıştırma** (düşünme açık, bütçe 256; port 8080). ⚠️
   `--reasoning-budget-message` boşluk içerdiği için **tırnaklanmalı ve `=` biçimi kullanılmamalı**:
