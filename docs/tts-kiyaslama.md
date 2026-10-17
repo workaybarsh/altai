@@ -217,7 +217,10 @@ Aynı **doğru Türkçe** cümleyle üretilen örnekler dinlendi:
 - **"ş" kalıntısı → akustik hata** (modelin Türkçe fonem kalitesi), tokenizer değil. Giderme yolları:
   (a) küçük **respell / G2P-lite** katmanı (ş→"sh" gibi), (b) Türkçe **fine-tune / LoRA**.
 
-**Karar (kulak testiyle):** **Chatterbox (yamalı) + Trendyol = iyi adaylar**; diğer varyantlar elendi.
+**Karar (kulak testiyle, 2026-10-17):** **Her ikisi de iyi** — **Chatterbox (tr-fix + respell)** ve
+**Trendyol**. Diğer varyantlar (yamasız / ASCII) elendi. Fark:
+- **Chatterbox** → **hafif + hızlı** (~2 GB, RTF ~1,4) ⇒ **canlı hat adayı** (İngilizce de iyi).
+- **Trendyol** → **native TR** ama **ağır + yavaş** (~5,6 GB, RTF ~3,4) ⇒ **çevrimdışı / yüksek kalite**.
 
 ### 9.3 "ş" için respell çözümü (2026-10-17)
 

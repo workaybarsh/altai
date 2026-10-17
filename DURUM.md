@@ -21,23 +21,23 @@ Repo: `github.com/workaybarsh/aybars_says`
   `docs/tts-kiyaslama.md`)
 - **Chatterbox TR düzeltmesi (kod):** kök neden tokenizer'ın her zaman `NFKD` uygulaması +
   Türkçe-duyarsız `lower()`; `install_tr_tokenizer_fix()` yazıldı, `--chatterbox-tr-fix` eklendi
-  (**19 test**). **Kulak + Whisper doğruladı (2026-10-17):** yamalı Chatterbox ve Trendyol **iyi**;
-  yamasız/ASCII bozuk. Kalan "ş" hatası için **`ş→sh` respell** eklendi (`--chatterbox-tr-respell`,
-  **20 test**) ve kulak testinde doğrulandı (karar #18, `docs/tts-kiyaslama.md` §9)
+  (**19 test**). **Kulak testi (2026-10-17): Chatterbox (tr-fix+respell) ve Trendyol — ikisi de iyi.**
+  Chatterbox hafif/hızlı → canlı aday; Trendyol native TR ama ağır → çevrimdışı (karar #18,
+  `docs/tts-kiyaslama.md` §9)
 - Testler: `python -m pytest -q` → **19 test** geçiyor
 
 ## Önemli kararlar (özet)
 - **LLM:** Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M **+ MTP zorunlu** (kararlar #12, #13)
 - **STT:** whisper.cpp `large-v3-turbo` (karar #11)
-- **TTS:** İngilizce için **Chatterbox** (MIT); Türkçesi zayıf. TR için **Trendyol-TTS** test
-  edildi: **anlaşılır** ama **ağır** (~5,6 GB VRAM, RTF ~3) → **çevrimdışı motor** olarak eklendi
-  (`voxcpm` backend, kararlar #14/#16). Canlı TR hattı hâlâ açık (kararlar #16 açık maddesi)
+- **TTS:** İngilizce **Chatterbox** (MIT). TR: **Chatterbox (tr-fix + respell)** ve **Trendyol-TTS**
+  kulak testinde **ikisi de iyi** → Chatterbox **canlı aday** (hafif/hızlı, ~2 GB), Trendyol
+  **çevrimdışı** (~5,6 GB, RTF ~3,4). (kararlar #16/#18)
 
 ## Açık işler / sıradaki adımlar
-0. ⏳ **GPU boşalınca (öncelik): SES ÇIKIŞI testi.** Chatterbox TR düzeltmesinin (`--chatterbox-tr-fix`)
-   A/B ölçümü — aynı cümle 4 koşul (doğru TR × yama açık/kapalı, ASCII) → Whisper geri-çevirim + WER
-   + kulak. Plan: `docs/tts-kiyaslama.md` §9.1. Ön koşul: Chatterbox ağırlıkları ilk çalıştırmada
-   iner (~2 GB). **Kullanıcı notu:** "iş bitince ses çıkışı mevzusunu tekrar deneyelim."
+0. ✅ **Ses çıkışı testi yapıldı (2026-10-17).** Kulak testi: **Chatterbox (tr-fix + respell)** ve
+   **Trendyol** — **ikisi de iyi**. Chatterbox hafif/hızlı (~2 GB, RTF ~1,4) → **canlı aday**;
+   Trendyol native TR ama ağır (~5,6 GB, RTF ~3,4) → **çevrimdışı**. Ayrıntı:
+   `docs/tts-kiyaslama.md` §9.2–9.3. **Sıradaki:** canlı hat kararını Chatterbox lehine netleştirmek.
 1. **Türkçe TTS:** Trendyol-TTS değerlendirildi → **anlaşılır** ama canlı hat için **ağır**
    (VRAM ~5,6 GB, RTF ~3). `agent/tts-tools.py`'ye `voxcpm` backend eklendi (çevrimdışı/yüksek
    kalite). Ayrıntı: `docs/tts-tr-sonuc.md`.
