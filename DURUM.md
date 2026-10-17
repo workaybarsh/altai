@@ -47,9 +47,10 @@ Repo: `github.com/workaybarsh/aybars_says`
 
 ## Ortam notları
 - **WSL:** Ubuntu 24.04, `E:\wsl\ubuntu-24.04`, RTX 5060 Ti GPU geçişi çalışıyor (Python 3.12)
-- **TTS venv:** `%TEMP%\opencode\tts-venv` ⚠️ **2026-10-17: sunucu yeniden başlayınca SİLİNDİ**
-  (yeniden kurulmalı: `torch` cu128 + `chatterbox-tts` + `voxcpm` + `soundfile`). HF modelleri
-  **sağlam**: Chatterbox ~3 GB, Trendyol-TTS ~4,9 GB, whisper-large-v3-turbo ~1,5 GB
+- **TTS venv:** ⚠️ 2026-10-17: `%TEMP%\opencode\tts-venv` silindi (restart) → **yeniden kuruldu:
+  `%USERPROFILE%\tts-venv`** — `torch 2.11.0+cu128` (sm_120, CUDA True), `chatterbox-tts 0.1.7`,
+  `voxcpm 2.0.3`, `soundfile`; doğrulandı. HF modelleri **sağlam**: Chatterbox ~3 GB,
+  Trendyol-TTS ~4,9 GB, whisper-large-v3-turbo ~1,5 GB
 - **Örnek sesler:** `logs\tts\tr-ornek.wav`, `logs\tts\en-ornek.wav`,
   `logs\tts\trendyol-tr.wav`, `logs\tts\trendyol-tr2.wav`
 - Proje **native Windows** hedefler; Fish/WSL yalnızca deneme amaçlı
