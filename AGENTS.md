@@ -130,6 +130,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 
 | Tarih | Değişiklik | Dosyalar |
 |---|---|---|
+| 2026-10-17 | **Chatterbox "ş" sorunu için respell çözümü:** `ş→sh` kulak testinde doğrulandı → `--chatterbox-tr-respell` eklendi. Ayrıca kulak testi: yamalı Chatterbox + Trendyol iyi. **20 test**. | agent/tts-tools.py, tests/test_tts_tools.py, docs/tts-kiyaslama.md, docs/kararlar.md, DURUM.md, AGENTS.md |
 | 2026-10-17 | **İki donanım profili (A: 8 GB VRAM/16 GB RAM · B: 16 GB VRAM/32 GB RAM)** kaynak bütçesine eklendi — model/CPU-GPU dağılımı, VRAM/RAM tahminleri ve B için varyantlar. | docs/mimari.md, DURUM.md, AGENTS.md |
 | 2026-10-17 | **Chatterbox TR diakritik sorununun kök nedeni bulundu ve yaması yazıldı:** tokenizer'ın `NFKD` + Türkçe-duyarsız `lower()` hatası → `install_tr_tokenizer_fix()` / `--chatterbox-tr-fix` (offline, **19 test**). Ses doğrulaması GPU boşken. | agent/tts-tools.py, tests/test_tts_tools.py, docs/tts-kiyaslama.md, docs/tts-tr-sonuc.md, docs/kararlar.md, DURUM.md, AGENTS.md |
 | 2026-10-16 | **Bağımsız Türkçe TTS kıyası işlendi** (arXiv:2610.06057, Sestek): Chatterbox vs CosyVoice/OmniVoice/VoxCPM2/VITS. Chatterbox hiçbir metriği kazanmıyor + kısa cümlede çöküyor; VoxCPM2 klon/kararlılık, CosyVoice doğallık lideri. Karar #17. | docs/tts-kiyaslama.md, docs/kararlar.md, DURUM.md, README.md, AGENTS.md |

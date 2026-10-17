@@ -60,6 +60,10 @@ def test_tr_lower_is_turkish_aware():
     assert tts.tr_lower("İSTANBUL IĞDIR") == "istanbul ığdır"
 
 
+def test_tr_respell_maps_s_to_sh():
+    assert tts.tr_respell("Çalışan şair, şaşkın şarkı") == "Çalıshan shair, shashkın sharkı"
+
+
 def test_install_tr_tokenizer_fix_keeps_precomposed():
     import unicodedata
 
