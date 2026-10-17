@@ -14,16 +14,17 @@ Proje: aybars_says — sesli (STT+TTS) yerel yapay zekâ sohbet uygulaması.
 
 Özet durum:
 - LLM: Huihui-Qwen3.5-9B i1-Q5_K_M + MTP (GPU'da, llama-server) — ÖLÇÜLDÜ: ~103 tok/sn, TTFT ~0,3 sn
-- STT: whisper.cpp large-v3-turbo — ⚠️ yavaş (RTF ~4,2, CPU, thread ayarsız)
-- TTS: Chatterbox (TR: tr-fix + respell OTOMATİK, --lang tr) — canlı aday; Trendyol = çevrimdışı
-- **Pipeline uçtan uca ÇALIŞIYOR** (agent/pipeline.ps1): ASR → LLM → cümle → TTS
+- STT: whisper.cpp large-v3-turbo — CPU'da q5_0 + mantıksal thread: RTF 4,2 → ~1,9; canlı için whisper-server
+- TTS: Chatterbox (TR: tr-fix + respell OTOMATİK, --lang tr); Trendyol = çevrimdışı; RTF ~1,29 (GPU)
+- **Pipeline uçtan uca ÇALIŞIYOR** (agent/pipeline.ps1): ASR → LLM → cümle → **toplu** TTS (model tek yükleme)
 - Düşünme (reasoning) AÇIK: --reasoning on --reasoning-budget 256 (max_tokens düşünmeyi de kapsar)
 
-⏳ SIRADAKİ İŞ: pipeline'ı tts-tools.py'nin YENİ toplu moduna bağla
-   (--batch-file + --out-prefix → model tek yükleme; 57 sn → ~15 sn). Sonra ASR thread ayarı.
-   Kurulumlar: tools\whisper (whisper-cli), tools\llama (llama-server), models\ (turbo + MTP'li 9B GGUF)
+⚠️ <1 sn hedefi bu donanımda tutmuyor: ASR turbo ~10 sn (encoder 30 sn penceresi), TTS RTF ~1,29.
+⏳ SIRADAKİ İŞ: (a) TTS'i kalıcı süreç yap (whisper-server gibi), (b) ASR model/CPU-GPU kararı,
+   (c) gerçek konuşmayla Türkçe WER. Ayrıntı: DURUM.md, docs/faz2-sonuc.md, docs/kararlar.md #19
+   Kurulumlar: tools\whisper, tools\llama, models\ (turbo f16 + turbo-q5_0 + base/small/medium + MTP'li 9B)
 
-Hazır araçlar: agent/mtp_inject.py, agent/asr-tools.py, agent/tts-tools.py
-(chatterbox / voxcpm / piper / sapi + --batch-file), agent/pipeline.ps1
-— testler: python -m pytest -q (20 test)
+Hazır araçlar: agent/mtp_inject.py, agent/asr-tools.py (--batch? hayir; --server-url var),
+agent/tts-tools.py (chatterbox / voxcpm / piper / sapi + --batch-file), agent/pipeline.ps1,
+scripts/whisper-server.ps1 — testler: python -m pytest -q (30 test)
 ```

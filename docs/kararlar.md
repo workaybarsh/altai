@@ -4,6 +4,7 @@ Her karar: **ne**, **neden**, **alternatifler**. En yeni üstte.
 
 | # | Tarih | Karar | Gerekçe | Alternatifler (neden değil) |
 |---|---|---|---|---|
+| 19 | 2026-10-17 | **STT: `large-v3-turbo` kalır; ama CPU'da `q5_0` quant + mantıksal thread; canlı hat için kalıcı `whisper-server`. `-ac` YASAK.** `<1 sn` hedefi bu CPU'da **tutulacak gibi değil** → açık karar | Ölçüm (Ryzen 5 3600, 5,6 sn TR): f16 `-t 4` RTF **4,2** → q5_0 `-t 12` **1,9** (encode 10,0 sn). F16 CPU'da 127 GFLOPS, Q5_0 ~222 → quant ~1,3× + yükleme 1,2→0,5 sn. `-t 12 > -t 6` (SMT kazanç). Model karşılaştırması: base 0,84 sn/**Türkçe zayıf**, small 2,5 sn/zayıf, medium 7,5 sn/iyi, turbo 11,0 sn/en iyi → **doğruluk ve `<1 sn` birlikte tutmuyor**. ⚠️ `-ac` encoder penceresini kısıyor (hızlı) ama **tekrar döngüsü/halüsinasyon** üretiyor → reddedildi. Ayrıntı: [`faz2-sonuc.md`](faz2-sonuc.md) | `small`'a inmek (Türkçe zayıf); `-ac` ile pencere kısmak (tekrar döngüsü → reddedildi); whisper'ı GPU'ya almak (mimari kuralı değişir; açık) |
 | 18 | 2026-10-16 | **Chatterbox Türkçe sorunu = ön-işleme hatası (kalite değil)** → Chatterbox TR için **elenmez**; yama ile geri kazanılacak **en ucuz/hızlı aday** | **Kök neden (kod, doğrulandı):** `MTLTokenizer.preprocess_text` her zaman `NFKD` uyguluyor (`ş`→`s`+cedilla, `ü`→`u`+diaeresis) + `lower()` Türkçe-duyarsız → diakritik düşüyor. `install_tr_tokenizer_fix()` yaması yazıldı, offline **19 test**; **respell `ş→sh` kulak testinde doğrulandı** → TR için **otomatik** (`--lang tr`; kapatmak için `--chatterbox-tr-raw`), **20 test**. **Kulak testi (2026-10-17): yamalı Chatterbox + Trendyol — ikisi de iyi** (diğerleri bozuk). Kayıtlar: chatterbox **#261**, HF **#33/#550**, `voicebox` **#846**. 0,5B + **~3,3 GB** (ölçüm) + **MIT**; RTF bizde **~1,1** (resmî ~0,05–0,2). Ayrıntı: [`tts-kiyaslama.md`](tts-kiyaslama.md) §8–9 | Chatterbox'ı TR'de elemek (sorun kalite değil); pahalı LoRA'yı ilk çare yapmak |
 | 17 | 2026-10-16 | **Bağımsız Türkçe TTS kanıtı işlendi** (arXiv:2610.06057, Sestek): Chatterbox TR'de **hiçbir metriği kazanmıyor** ve **kısa cümlede çöküyor**; **VoxCPM2** klon/benar./uzun-form kararlılık lideri, **CosyVoice** doğallık lideri, **OmniVoice(ZS)** anlaşılırlık lideri | Chatterbox'ın TR zayıflığını objektif doğruluyor; TR için VoxCPM2 ailesi (→ Trendyol) + CosyVoice öne çıkıyor. Ayrıntı: [`tts-kiyaslama.md`](tts-kiyaslama.md) | — (kanıt kaydı) |
 | 16 | 2026-10-16 | TTS-TR: **Trendyol-TTS** (`openbmb/VoxCPM2` + TR LoRA, MIT, ~2B) **cevrimdisi/yuksek-kalite TR motoru** olarak eklendi (`tts-tools.py --backend voxcpm`). **Canli `<1 sn` hattinin varsayilani DEGIL** | TR native ve **anlasilir** (geri-ceviri Whisper WER ~0,08, 2026-10-16). Ama **agir**: ~5,6 GB VRAM + RTF ~3 (gercek zamandan ~3x yavas) → 8 GB kartta yerlesik 9B LLM ile sigmaz ve `<1 sn` hedefini yer | Canli hatta birincil yapmak (VRAM + gecikme → reddedildi); Piper (CPU hizli ama robotik); CosyVoice2 / XTTS-v2 (bkz. acik kararlar) |
@@ -36,6 +37,8 @@ Planlama sırasında masaya gelip vazgeçilen seçenekler (kayıt için; en yeni
 
 | Konu | Düşünülen | Neden vazgeçildi |
 |---|---|---|
+| STT | **`-ac` (audio context kısma)** ile encoder penceresini küçültmek | Hızlı görünüyor (encode 10→3,2 sn) ama **tekrar döngüleri ve bozuk transkript** üretiyor ("asistanım"→"hastanım"; 11 sn seste cümle 5×, 22 sn seste 115 kelime). **Güvenli değil** → karar #19 |
+| STT | whisper `base` / `small` (CPU'da `<1 sn` için) | Hızlı ama **Türkçe doğruluk zayıf** (base 0,84 sn; small 2,5 sn). Sohbet için kabul edilemez → açık karar |
 | STT | **Qwen3-ASR-1.7B** (ve `0.6B` yedeği) | Bir dönem whisper yerine seçilmişti; ancak CPU'da 1.7B gerçek zamanın ~4 katı olduğundan `<1 sn` hedefinde riskliydi. **#11** ile whisper.cpp'ye dönüldü. Türkçe/akışlı avantajı gerekirse tekrar değerlendirilebilir |
 | STT | whisper `large-v3` (tam) | CPU'da yavaş; `<1 sn` hedefini tek başına yer (turbo tercih edildi) |
 | LLM | Orijinal `huihui-ai` **static** Q5_K_M | Çalışır ama imatrix (i1) quant aynı boyutta daha iyi kalite verir → #12 |
@@ -56,7 +59,13 @@ Planlama sırasında masaya gelip vazgeçilen seçenekler (kayıt için; en yeni
 - [x] **MTP:** quant GGUF'ta yok → `mtp_inject.py` ile enjekte edilir (kaynak doğrulandı). Kabul
   testleri: [`mtp-dogrulama.md`](mtp-dogrulama.md). *(Karar #13.)*
 - [ ] MTP enjeksiyonu sonrası 8 GB VRAM'e sığıyor mu (gerçek ölçüm)?
-- [ ] STT: **`large-v3-turbo`** yeterli mi, `medium`/`small`'a mı inilmeli (Faz 2 ölçümü)
+- [x] STT: **`large-v3-turbo`** kalır ama **q5_0 + mantıksal thread**; canlı için **kalıcı
+  `whisper-server`**; `-ac` yasak. *(`medium`/`small` ölçüldü: hız var, Türkçe doğruluk zayıf —
+  bkz. karar #19, [`faz2-sonuc.md`](faz2-sonuc.md).)*
+- [ ] **⚠️ Yeni açık karar:** `<1 sn` STT hedefi CPU'da kabul edilebilir Türkçe doğrulukla
+  tutulmuyor (turbo ~11 sn, `base` ~0,84 sn ama doğruluk kötü). Yol: (a) `small`/`medium` ile
+  hedefi gevşet (~2,5/7,5 sn), (b) whisper'ı GPU'ya al (mimari kuralı değişir), (c) gerçek konuşmayla
+  Türkçe WER ölçüp karar ver.
 - [x] TTS birincil = **Chatterbox Multilingual v3** (EN). TR = **Trendyol-TTS** çevrimdışı/yüksek-kalite motoru (`tts-tools.py --backend voxcpm`); Fish S2 Pro yalnızca izole WSL denemesi. *(Kararlar #14, #15, #16.)*
 - [ ] **Canlı TR TTS** hâlâ açık: Piper (CPU, hızlı ama robotik) mi, yoksa GPU'ya alınan yüksek-kalite motor (LLM'i küçültür/boşaltır) mu? "İki mod" öneriliyor. Trendyol-TTS canlı için elendi (RTF ~3, ~5,6 GB VRAM)
 - [ ] **Chatterbox TR ön-normalizasyon (G2P-lite) denemesi:** diakritikleri doğru okutacak metin dönüşümü + CER/WER ölçümü (#18). Başarılıysa TR için en hafif/hızlı yol

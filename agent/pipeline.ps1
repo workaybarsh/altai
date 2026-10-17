@@ -1,12 +1,16 @@
 #!/usr/bin/env pwsh
-# pipeline.ps1 - ASR -> LLM -> TTS boru hatti (aybars_says)  [ISKELET]
+# pipeline.ps1 - ASR -> LLM -> TTS boru hatti (aybars_says)
 #
 # Akis:  WAV/Text -> whisper.cpp (asr-tools.py) -> llama-server (HTTP) -> cumlelere bol
 #        -> TTS (tts-tools.py; TR icin chatterbox duzeltmeleri OTOMATIK) -> WAV'lar
 #
+# TTS TOPLU MOD: chatterbox icin cumleler TEK cagrida uretilir (--batch-file + --out-prefix),
+#   boylece model BIR KEZ yuklenir (her cumlede ~13 sn + torch import ~8 sn tekrar etmez).
+#   Beklenen kazanc: 2 cumlede ~57 sn -> ~15 sn. Baska backend'lerde cumle-cumle moda dusulur.
+#
 # Ornek:
 #   pwsh -File agent\pipeline.ps1 -Text "Merhaba, nasilsin?" -Lang tr
-#   pwsh -File agent\pipeline.ps1 -Wav kayit.wav -Model models\ggml-large-v3-turbo.bin
+#   pwsh -File agent\pipeline.ps1 -Wav kayit.wav -Model models\ggml-large-v3-turbo-q5_0.bin -AsrThreads 12
 #
 # Not: Bilesen (whisper / llama-server) yoksa DURUSTCE hata verir, uydurmaz.
 #      TTS backend'leri (chatterbox/voxcpm) icin -Python olarak tts-venv python'u verin.
@@ -16,11 +20,15 @@ param(
   [string]$TextFile,
   [string]$Server = "http://127.0.0.1:8080",
   [string]$Model,
+  [string]$Whisper,
+  [string]$AsrServerUrl,
+  [int]$AsrThreads = 0,
   [string]$Lang = "tr",
   [string]$Backend = "chatterbox",
   [string]$Device = "cuda",
   [string]$Python = "python",
   [string]$OutDir = "logs\pipeline",
+  [string]$VoicePrompt,
   [int]$MaxTokens = 1024,
   [switch]$NoThink,
   [switch]$Play
@@ -37,12 +45,20 @@ New-Item -ItemType Directory -Force -Path $outRoot | Out-Null
 if ($TextFile) { $Text = [System.IO.File]::ReadAllText($TextFile).Trim() }
 if (-not $Text) {
     if (-not $Wav) { throw "Ne -Text ne -Wav verildi." }
-    if (-not $Model) { throw "ASR icin -Model (whisper .bin) gerekli." }
-    $asrOut = & $Python $asr --wav $Wav --model $Model --lang $Lang | ConvertFrom-Json
+    if (-not $Model -and -not $AsrServerUrl) { throw "ASR icin -Model (whisper .bin) ya da -AsrServerUrl gerekli." }
+    $asrArgs = @($asr, "--wav", $Wav, "--lang", $Lang)
+    if ($AsrServerUrl) { $asrArgs += @("--server-url", $AsrServerUrl) }
+    else { $asrArgs += @("--model", $Model) }
+    if ($Whisper) { $asrArgs += @("--whisper", $Whisper) }
+    if ($AsrThreads -gt 0) { $asrArgs += @("--threads", $AsrThreads) }
+    $asrOut = & $Python @asrArgs | ConvertFrom-Json
     if (-not $asrOut.ok) { throw "ASR basarisiz: $($asrOut.error)" }
-    $Text = $asrOut.results[0].text
+    $r0 = $asrOut.results[0]
+    Write-Host ("[ASR] {0} sn ses -> {1} sn (RTF {2}, threads {3})" -f `
+        $r0.audio_seconds, $r0.asr_seconds, $r0.rtf, $asrOut.threads)
+    $Text = $r0.text
 }
-Write-Host "[ASR] $Text"
+Write-Host "[METIN] $Text"
 
 # --- 2) LLM: yanit (llama-server, OpenAI uyumlu) ---
 $payload = @{
@@ -72,33 +88,82 @@ if (-not $answer) {
 Write-Host "[LLM] $answer"
 
 # --- 3) Cumlelere bol ---
-$sentences = [regex]::Split($answer, '(?<=[\.\!\?])\s+') | Where-Object { $_.Trim().Length -gt 0 }
+# Emoji/sembol-only parcalari at (TTS bunlarda coker); harf/rakam iceren cumleler kalsin
+$sentences = @([regex]::Split($answer, '(?<=[\.\!\?])\s+') |
+    Where-Object { $_.Trim().Length -gt 0 -and ($_ -match '\p{L}|\p{N}') } |
+    ForEach-Object { $_.Trim() })
 
-# --- 4) TTS: her cumle -> WAV (UTF-8 text-file ile; konsol kodlamasi bozmasin) ---
+# --- 4) TTS: cumleleri WAV'a cevir ---
+# chatterbox => TOPLU MOD (model bir kez yuklenir). Digerleri / toplu hata => cumle-cumle yedek.
 $wavs = @()
-$i = 0
-foreach ($s in $sentences) {
-    $i++
-    $txtFile = Join-Path $outRoot "tts_$i.txt"
-    $wavFile = Join-Path $outRoot "tts_$i.wav"
-    [System.IO.File]::WriteAllText($txtFile, $s.Trim(), (New-Object System.Text.UTF8Encoding($false)))
-    $jsonFile = Join-Path $outRoot "tts_$i.json"
-    $errFile = Join-Path $outRoot "tts_$i.err.txt"
+function Invoke-TtsSingle([string]$Sentence, [int]$Index) {
+    $txtFile = Join-Path $outRoot "tts_$Index.txt"
+    $wavFile = Join-Path $outRoot "tts_$Index.wav"
+    $jsonFile = Join-Path $outRoot "tts_$Index.json"
+    $errFile = Join-Path $outRoot "tts_$Index.err.txt"
+    # UTF-8 (BOM'suz) text-file ile; konsol kodlamasi metni bozmasin
+    [System.IO.File]::WriteAllText($txtFile, $Sentence, (New-Object System.Text.UTF8Encoding($false)))
     $ttsArgs = @($tts, "--backend", $Backend, "--lang", $Lang, "--text-file", $txtFile,
                  "--out", $wavFile, "--device", $Device, "--json-out", $jsonFile)
+    if ($VoicePrompt) { $ttsArgs += @("--voice-prompt", $VoicePrompt) }
     $oldEap = $ErrorActionPreference
     $ErrorActionPreference = "Continue"   # native stderr (tqdm/uyari) hata sayilmasin
-    & $Python @ttsArgs 2> $errFile
-    $ttsCode = $LASTEXITCODE
+    & $Python @ttsArgs 1> $null 2> $errFile   # stdout'u yut: JSON dosyadan okunuyor
+    $code = $LASTEXITCODE
     $ErrorActionPreference = $oldEap
-    if ($ttsCode -ne 0 -or -not (Test-Path $jsonFile)) {
-        Write-Warning "TTS ($Backend) basarisiz (cikis $ttsCode); hata: $errFile"
-        continue
+    if ($code -ne 0 -or -not (Test-Path $jsonFile)) {
+        Write-Warning "TTS ($Backend) basarisiz (cikis $code); hata: $errFile"
+        return $null
     }
-    $ttsOut = Get-Content -Raw $jsonFile | ConvertFrom-Json
-    if (-not $ttsOut.ok) { Write-Warning "TTS ($Backend) basarisiz: $($ttsOut.error)"; continue }
-    $wavs += $wavFile
-    Write-Host "[TTS] $wavFile"
+    $out = Get-Content -Raw $jsonFile | ConvertFrom-Json
+    if (-not $out.ok) { Write-Warning "TTS ($Backend) basarisiz: $($out.error)"; return $null }
+    return $wavFile
+}
+
+if ($sentences.Count -gt 0) {
+    $batchOk = $false
+    if ($Backend -eq "chatterbox") {
+        $batchFile = Join-Path $outRoot "tts_batch.txt"
+        $jsonFile = Join-Path $outRoot "tts_batch.json"
+        $errFile = Join-Path $outRoot "tts_batch.err.txt"
+        # her satir bir cumle; UTF-8 (BOM'suz)
+        [System.IO.File]::WriteAllLines($batchFile, [string[]]$sentences, (New-Object System.Text.UTF8Encoding($false)))
+        $ttsArgs = @($tts, "--backend", $Backend, "--lang", $Lang,
+                     "--batch-file", $batchFile, "--out-prefix", (Join-Path $outRoot "tts_"),
+                     "--device", $Device, "--json-out", $jsonFile)
+        if ($VoicePrompt) { $ttsArgs += @("--voice-prompt", $VoicePrompt) }
+        $oldEap = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        & $Python @ttsArgs 1> $null 2> $errFile   # stdout'u yut: JSON dosyadan okunuyor
+        $code = $LASTEXITCODE
+        $ErrorActionPreference = $oldEap
+        if ($code -eq 0 -and (Test-Path $jsonFile)) {
+            $batch = Get-Content -Raw $jsonFile | ConvertFrom-Json
+            if ($batch.ok) {
+                Write-Host ("[TTS] TOPLU: {0} cumle, model yukleme {1} sn, uretim {2} sn, RTF {3}" -f `
+                    $batch.count, $batch.load_seconds, $batch.total_tts_seconds, $batch.rtf)
+                foreach ($r in $batch.results) {
+                    if ($r.ok -and (Test-Path $r.out)) { $wavs += $r.out }
+                    else { Write-Warning "TTS cumle $($r.index) basarisiz: $($r.error)" }
+                }
+                $batchOk = $true
+            } else {
+                Write-Warning "TTS toplu mod basarisiz: $($batch.error)"
+            }
+        } else {
+            Write-Warning "TTS toplu mod basarisiz (cikis $code); hata: $errFile"
+        }
+    }
+    if (-not $batchOk) {
+        if ($Backend -eq "chatterbox") { Write-Warning "Toplu TTS olmadi; cumle-cumle (yavas) moda dusuluyor." }
+        $i = 0
+        foreach ($s in $sentences) {
+            $i++
+            $w = Invoke-TtsSingle $s.Trim() $i
+            if ($w) { $wavs += $w }
+        }
+    }
+    foreach ($w in $wavs) { Write-Host "[TTS] $w" }
 }
 
 # --- 5) Cal (opsiyonel) ---

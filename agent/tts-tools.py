@@ -15,6 +15,10 @@ Ornek:
   python agent/tts-tools.py --backend chatterbox --text "Hello" --out en.wav --device cuda
   python agent/tts-tools.py --backend chatterbox --text "..." --voice-prompt ref.wav --out clone.wav
   python agent/tts-tools.py --backend voxcpm --text "Merhaba dunya" --out tr.wav --device cuda
+
+Toplu (model BIR KEZ yuklenir; pipeline icin varsayilan):
+  python agent/tts-tools.py --backend chatterbox --lang tr --batch-file cumleler.txt \
+      --out-prefix logs/pipeline/tts_ --json-out logs/pipeline/tts_batch.json
 """
 from __future__ import annotations
 
@@ -25,11 +29,22 @@ import sys
 import time
 import wave
 
+# Konsol kodlamasi (Windows cp125x) UTF-8 disi karakterlerde `print`'i patlatabilir
+# (or. LLM ciktisindaki emoji 😊). Bu, toplu uretimin TAMAMINI dusururdu -> stdout'u UTF-8'e cevir.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 # ------------------------------------------------------------------ yardimcilar
 
 def _json(payload: dict, out_path_json: str | None = None) -> None:
     text = json.dumps(payload, ensure_ascii=False, indent=2)
-    print(text)
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        # stdout hala UTF-8 degilse (nadir) ham baytlara dus, cokmeyi onle
+        sys.stdout.buffer.write(text.encode("utf-8", errors="replace") + b"\n")
     if out_path_json:
         os.makedirs(os.path.dirname(os.path.abspath(out_path_json)), exist_ok=True)
         with open(out_path_json, "w", encoding="utf-8") as f:
@@ -131,10 +146,18 @@ def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
                      respell=True, model=None):
     import torch
 
+    # Cok dilli (MTL) model mi? lang verilirse evet. (load_chatterbox ile ayni kural;
+    # burada da tanimli olmali -- aksi halde asagidaki `if uses_mtl` NameError verir.)
+    uses_mtl = bool(lang)
+
     if model is None:
         model = load_chatterbox(lang=lang, device=device, t3_model=t3_model)
     if seed is not None:
         torch.manual_seed(seed)
+
+    out_dir = os.path.dirname(os.path.abspath(out_wav))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
 
     # TR icin duzeltmeler OTOMATIK (lang='tr'): tokenizer NFKD yamasi + 'ş'->'sh' respell.
     # (kapatmak icin tr_fix/respell = False; CLI: --chatterbox-tr-raw)
@@ -259,7 +282,7 @@ def main(argv=None) -> int:
     ap.add_argument("--backend", default="chatterbox", choices=["chatterbox", "voxcpm", "piper", "sapi"])
     ap.add_argument("--text")
     ap.add_argument("--text-file")
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", default=None, help="tekli modda cikti wav (toplu modda --out-prefix ile)")
     ap.add_argument("--lang", default=None, help="chatterbox coklu dil: tr, en, ...")
     ap.add_argument("--voice-prompt", default=None, help="klonlama icin referans wav")
     ap.add_argument("--device", default="cuda", help="cuda | cpu")
@@ -285,11 +308,17 @@ def main(argv=None) -> int:
 
     # ---------------- TOPLU MOD (chatterbox): model tek yukleme ----------------
     if args.batch_file:
+        if not os.path.exists(args.batch_file):
+            _json({"ok": False, "error": f"batch dosyasi bulunamadi: {args.batch_file}"}, args.json_out)
+            return 2
         lines = _read_lines(args.batch_file)
         if not lines:
             _json({"ok": False, "error": "batch dosyasi bos"}, args.json_out)
             return 2
-        prefix = args.out_prefix or os.path.splitext(args.out)[0]
+        prefix = args.out_prefix or (os.path.splitext(args.out)[0] if args.out else None)
+        if not prefix:
+            _json({"ok": False, "error": "toplu modda --out-prefix (ya da --out) gerekli"}, args.json_out)
+            return 2
         os.makedirs(os.path.dirname(os.path.abspath(prefix)) or ".", exist_ok=True)
         try:
             if args.backend != "chatterbox":
@@ -300,10 +329,17 @@ def main(argv=None) -> int:
             outs = []
             for i, line in enumerate(lines, 1):
                 out_i = f"{prefix}{i}.wav"
-                r = synth_chatterbox(line, out_i, args.lang, args.voice_prompt, args.device,
-                                     args.exaggeration, args.cfg, args.t3_model, args.seed,
-                                     not args.chatterbox_tr_raw, not args.chatterbox_tr_raw,
-                                     model=model)
+                try:
+                    if not any(ch.isalnum() for ch in line):
+                        raise ValueError("metin gecerli harf icermiyor (emoji/sembol?)")
+                    r = synth_chatterbox(line, out_i, args.lang, args.voice_prompt, args.device,
+                                         args.exaggeration, args.cfg, args.t3_model, args.seed,
+                                         not args.chatterbox_tr_raw, not args.chatterbox_tr_raw,
+                                         model=model)
+                    r["ok"] = True
+                except Exception as exc:  # tek cumle patlarsa toplu uretim devam eder
+                    r = {"ok": False, "out": out_i,
+                         "error": f"{type(exc).__name__}: {exc}"}
                 r["index"] = i
                 r["text"] = line[:200]
                 outs.append(r)
@@ -311,16 +347,21 @@ def main(argv=None) -> int:
             _json({"ok": False, "backend": args.backend,
                    "error": f"{type(exc).__name__}: {exc}"}, args.json_out)
             return 3
-        total_audio = round(sum(o["audio_seconds"] for o in outs), 3)
-        total_gen = round(sum(o["tts_seconds"] for o in outs), 3)
-        payload = {"ok": True, "backend": args.backend, "batch": True,
-                   "count": len(outs), "load_seconds": round(load_s, 2),
+        good = [o for o in outs if o.get("ok")]
+        total_audio = round(sum(o.get("audio_seconds", 0) or 0 for o in good), 3)
+        total_gen = round(sum(o.get("tts_seconds", 0) or 0 for o in good), 3)
+        payload = {"ok": bool(good), "backend": args.backend, "batch": True,
+                   "count": len(outs), "failed": len(outs) - len(good),
+                   "load_seconds": round(load_s, 2),
                    "total_tts_seconds": total_gen, "total_audio_seconds": total_audio,
                    "rtf": round(total_gen / total_audio, 3) if total_audio else None,
                    "results": outs}
         _json(payload, args.json_out)
-        return 0
+        return 0 if good else 3
 
+    if not args.out:
+        _json({"ok": False, "error": "--out gerekli (ya da --batch-file + --out-prefix)"}, args.json_out)
+        return 2
     text = _read_text(args)
     if not text:
         _json({"ok": False, "error": "metin bos (--text ya da --text-file ver)"}, args.json_out)

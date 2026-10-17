@@ -8,14 +8,17 @@ konuşursun, bot **sesle** yanıt verir.
 
 ## Durum
 
-**Taslak (planlama) — `v0.2-plan`. Ağırlıklı plan; çalışan ilk araç `agent/mtp_inject.py`.**
+**Taslak (planlama) — `v0.2-plan`. Çalışan araçlar: `agent/mtp_inject.py`, `agent/asr-tools.py`,
+`agent/tts-tools.py`, `agent/pipeline.ps1` (uçtan uca ASR→LLM→toplu TTS).**
 
 
-- Bu repo ağırlıklı olarak bir **tasarım/plan dokümanıdır**; ilk çalışan araç `agent/mtp_inject.py`.
+- Bu repo ağırlıklı olarak bir **tasarım/plan dokümanıdır**; çalışan araçlar `agent/` altındadır.
 - Her karar, gerekçesi ve **vazgeçilen alternatif** burada not edilir (bkz. [`docs/kararlar.md`](docs/kararlar.md)).
 - Ölçüm ve AR-GE sonuçları geldikçe aynı belgeler güncellenir.
-- Hedef (`<1 sn`) tutmazsa izlenecek yollar hazır: **daha küçük whisper.cpp modeli** (`small`/`medium`),
-  akışlı ASR optimizasyonu, LLM quant düşürme (bkz. [`docs/faz2-olcum-plani.md`](docs/faz2-olcum-plani.md), [`docs/kararlar.md`](docs/kararlar.md)).
+- ⚠️ **Ölçüldü (2026-10-17): `<1 sn` hedefi bu donanımda (Ryzen 5 3600 / RTX 5060 Ti) tutmuyor.**
+  STT `large-v3-turbo` CPU'da ~11 sn (q5_0, encoder 30 sn penceresi); `base`/`small` hızlı ama
+  Türkçe doğruluğu zayıf. TTS Chatterbox GPU'da RTF ~1,29. Ayrıntı ve seçenekler:
+  [`docs/faz2-sonuc.md`](docs/faz2-sonuc.md), [`docs/kararlar.md`](docs/kararlar.md) #19.
 
 ## Hedef
 

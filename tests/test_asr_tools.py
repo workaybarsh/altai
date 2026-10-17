@@ -74,3 +74,80 @@ def test_main_reports_missing_whisper(tmp_path, capsys):
     assert code == 3
     assert out["ok"] is False
     assert "whisper" in out["error"].lower()
+
+
+def test_default_threads_at_least_one():
+    n = asr.default_threads()
+    assert isinstance(n, int) and n >= 1
+
+
+def test_parse_whisper_timings_splits_load_and_infer():
+    stderr = (
+        "whisper_print_timings:     load time =  1221.79 ms\n"
+        "whisper_print_timings:   encode time = 15993.31 ms /     1 runs ( 15993.31 ms per run)\n"
+        "whisper_print_timings:   decode time =     0.00 ms /     1 runs (     0.00 ms per run)\n"
+        "whisper_print_timings:    total time = 17886.53 ms\n"
+    )
+    t = asr.parse_whisper_timings(stderr)
+    assert t["load_seconds"] == pytest.approx(1.2218, abs=1e-3)
+    assert t["encode_seconds"] == pytest.approx(15.9933, abs=1e-3)
+    assert t["whisper_total_seconds"] == pytest.approx(17.8865, abs=1e-3)
+    assert asr.parse_whisper_timings("") == {}
+
+
+def test_build_whisper_command_threads_optional():
+    # thread verilmezse -t eklenmez (whisper varsayilani); verilirse eklenir
+    assert "-t" not in asr.build_whisper_command("w", "m", "f", "tr", None)
+    assert "-t" in asr.build_whisper_command("w", "m", "f", "tr", 6)
+
+
+def test_server_mode_uses_http_and_needs_no_model(tmp_path, capsys):
+    """whisper-server modu: --server-url verilince --model gerekmez ve HTTP ile cikarim yapilir."""
+    import http.server
+    import json as _json
+    import threading
+
+    captured = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            n = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(n)
+            captured["path"] = self.path
+            captured["ctype"] = self.headers.get("Content-Type", "")
+            captured["has_riff"] = b"RIFF" in body
+            resp = _json.dumps({"text": "merhaba dunya"}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
+        def log_message(self, *a):  # sessiz
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        wav = make_wav(tmp_path / "srv.wav", seconds=1.0)
+        code = asr.main(["--wav", wav, "--server-url", f"http://127.0.0.1:{srv.server_port}"])
+        out = _json.loads(capsys.readouterr().out)
+    finally:
+        srv.shutdown()
+
+    assert code == 0
+    assert out["ok"] is True
+    assert out["results"][0]["text"] == "merhaba dunya"
+    assert captured["path"] == "/inference"
+    assert "multipart/form-data" in captured["ctype"]
+    assert captured["has_riff"] is True
+    assert out["results"][0]["audio_seconds"] == pytest.approx(1.0, abs=1e-6)
+
+
+def test_server_mode_dead_endpoint_reports_error(tmp_path, capsys):
+    wav = make_wav(tmp_path / "dead.wav", seconds=0.5)
+    code = asr.main(["--wav", wav, "--server-url", "http://127.0.0.1:1"])
+    out = json.loads(capsys.readouterr().out)
+    assert code == 5
+    assert out["ok"] is False
+    assert out["errors"]
