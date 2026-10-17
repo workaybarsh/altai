@@ -199,6 +199,26 @@ kulakla dinle. Beklenti: **(1) ≫ (2)** ise yama çalışıyor; **(1) ≈ (3)**
 
 > ⚠️ Ön koşul: Chatterbox ağırlıkları ilk çalıştırmada indirilir (~2 GB, `ResembleAI/chatterbox`).
 
+### 9.2 Kulak testi + sözlük incelemesi (2026-10-17)
+
+Aynı **doğru Türkçe** cümleyle üretilen örnekler dinlendi:
+
+| Sonuç | Örnek |
+|---|---|
+| ✅ **İyi** | **Chatterbox (yama açık)**, **Trendyol (VoxCPM2 + TR LoRA)** |
+| ❌ Bozuk | Chatterbox **yamasız**, **ASCII** örnekleri, eski (ASCII) Trendyol örnekleri |
+
+- ⚠️ **Kalan tek kusur:** Chatterbox "**çalışan**" → "**çalıyan**" (yani **"ş"** yanlış).
+  Whisper geri-çevirimi de "çalayan" duydu → **kulak + ASR uyumlu**.
+- **Tokenizer sözlüğü** (`grapheme_mtl_merged_expanded_v1.json`, 2454 token): `ş, ç, ğ, ı, ö, ü, â`
+  **ve** birleşen işaretler (`U+0327/U+0308/U+0306/U+0307`) **mevcut**. → Sorun "harf yok" değil:
+  **NFKD** metni `s`+cedilla gibi **iki tokene** böler, model tek harf gibi okumaz. **Yama** precomposed
+  **tek token**'ı korur → düzelme bundan.
+- **"ş" kalıntısı → akustik hata** (modelin Türkçe fonem kalitesi), tokenizer değil. Giderme yolları:
+  (a) küçük **respell / G2P-lite** katmanı (ş→"sh" gibi), (b) Türkçe **fine-tune / LoRA**.
+
+**Karar (kulak testiyle):** **Chatterbox (yamalı) + Trendyol = iyi adaylar**; diğer varyantlar elendi.
+
 **Çözüm yolları (kolaydan ağıra):**
 
 | Yol | Ne yapar | Emek | Beklenti |

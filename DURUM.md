@@ -21,7 +21,8 @@ Repo: `github.com/workaybarsh/aybars_says`
   `docs/tts-kiyaslama.md`)
 - **Chatterbox TR düzeltmesi (kod):** kök neden tokenizer'ın her zaman `NFKD` uygulaması +
   Türkçe-duyarsız `lower()`; `install_tr_tokenizer_fix()` yazıldı, `--chatterbox-tr-fix` eklendi
-  (**19 test**). Ses etkisi GPU boşken ölçülecek (karar #18, `docs/tts-kiyaslama.md` §9)
+  (**19 test**). **Kulak + Whisper doğruladı (2026-10-17):** yamalı Chatterbox ve Trendyol **iyi**;
+  yamasız/ASCII bozuk (karar #18, `docs/tts-kiyaslama.md` §9)
 - Testler: `python -m pytest -q` → **19 test** geçiyor
 
 ## Önemli kararlar (özet)
