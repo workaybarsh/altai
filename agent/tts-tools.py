@@ -253,9 +253,14 @@ def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
             return res
         res["retried"] = True
         res["long_tail_guard"] = True
+        res["guard_extra_seconds"] = res2["tts_seconds"]   # telafi maliyeti (olcum icin)
         if res2["audio_seconds"] < res["audio_seconds"]:
             os.replace(retry_path, out_wav)
             res2["first_audio_seconds"] = res["audio_seconds"]
+            # DIKKAT: dosya artik out_wav yolunda; `out` retry yolunu gostermemeli
+            # (pipeline res.out'u Test-Path ile kullaniyor -> yanlissa cumle dusuyordu).
+            res2["out"] = out_wav
+            res2["retry_out"] = retry_path
             res = {**res, **res2}
         else:
             res["retry_audio_seconds"] = res2["audio_seconds"]

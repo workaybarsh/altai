@@ -180,7 +180,14 @@ if ($sentences.Count -gt 0) {
     # toplu/sunucu sonuclarini topla (ortak)
     if ($batch -and $batch.ok) {
         foreach ($r in $batch.results) {
-            if ($r.ok -and (Test-Path $r.out)) { $wavs += $r.out }
+            $w = $r.out
+            # Savunma: JSON'daki `out` bayat/eksik olabilir (or. guard retry'i) ->
+            # sozlesmedeki dosya adina dus (prefix "tts_", index 1-tabanli).
+            if (-not $w -or -not (Test-Path -LiteralPath $w)) {
+                $alt = Join-Path $outRoot ("tts_{0}.wav" -f $r.index)
+                if (Test-Path -LiteralPath $alt) { $w = $alt }
+            }
+            if ($r.ok -and $w -and (Test-Path -LiteralPath $w)) { $wavs += $w }
             else { Write-Warning "TTS cumle $($r.index) basarisiz: $($r.error)" }
         }
         $batchOk = $true

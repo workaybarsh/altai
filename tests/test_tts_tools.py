@@ -182,6 +182,8 @@ def test_synth_chatterbox_retries_when_audio_too_long(monkeypatch, tmp_path):
     assert res["first_audio_seconds"] == pytest.approx(9.6, abs=0.01)
     assert os.path.exists(out)                  # kisa cikti asil yola tasindi
     assert not os.path.exists(str(out) + ".retry.wav")
+    assert res["out"] == str(out)               # ⚠️ regresyon: yol .retry.wav'a kaymamali
+    assert res["guard_extra_seconds"] == res["tts_seconds"]   # telafi = retry uretimi
 
 
 def test_synth_chatterbox_keeps_first_when_retry_longer(monkeypatch, tmp_path):
@@ -194,6 +196,20 @@ def test_synth_chatterbox_keeps_first_when_retry_longer(monkeypatch, tmp_path):
     assert res["audio_seconds"] == pytest.approx(9.6, abs=0.01)   # ilki daha kisa
     assert res["retry_audio_seconds"] == pytest.approx(12.0, abs=0.01)
     assert not os.path.exists(str(out) + ".retry.wav")            # gecici dosya silindi
+    assert res["out"] == str(out) and os.path.exists(res["out"])  # ilk cikti yerinde
+    assert res["guard_extra_seconds"] >= 0                        # telafi maliyeti kaydi
+
+
+def test_synth_chatterbox_retry_result_points_to_real_file(monkeypatch, tmp_path):
+    """Her durumda `out` diskte VAR olan dosyayi gostermeli (pipeline Test-Path kullaniyor)."""
+    durations = {"a": ([9.6, 0.9], True), "b": ([9.6, 12.0], True), "c": ([1.0], False)}
+    for name, (durs, should_retry) in durations.items():
+        model, calls, saved = _stub_chatterbox(monkeypatch, durs)
+        out = tmp_path / f"{name}.wav"
+        res = tts.synth_chatterbox("Merhaba!", str(out), lang="tr", model=model)
+        assert bool(res.get("retried", False)) is should_retry
+        assert res["out"] == str(out)
+        assert os.path.exists(res["out"])           # bayat .retry.wav yolu DEGIL
 
 
 def test_synth_chatterbox_no_retry_when_normal(monkeypatch, tmp_path):

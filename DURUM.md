@@ -53,7 +53,10 @@ Repo: `github.com/workaybarsh/aybars_says`
   **GPU ölçümü (24 üretim): 7 tetiklenme (%29), en uzun yakalanan kuyruk 6,04 sn, 0 hata**;
   uzun cümlede hiç tetiklenmedi. ⚠️ Guard azaltır, garanti etmez. Ayrıntı ve "iki mekanizma"
   ayrımı: [`docs/tts-kiyaslama.md`](docs/tts-kiyaslama.md) §11, karar #21.
-- Testler: `python -m pytest -q` → **38 test** geçiyor
+  *(İnceleme sonrası düzeltme: retry kazandığında `out` alanı silinmiş `.retry.wav` yolunu
+  gösteriyordu → `pipeline.ps1` o cümleyi `Test-Path`'te kaybediyordu; `out` artık gerçek dosya,
+  pipeline'a savunma eklendi.)*
+- Testler: `python -m pytest -q` → **39 test** geçiyor
 
 ## Önemli kararlar (özet)
 - **LLM:** Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M **+ MTP zorunlu** (kararlar #12, #13)

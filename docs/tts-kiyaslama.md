@@ -326,5 +326,13 @@ kararsızlığı** (§3 ile uyumlu).
   `/health` `ok:true`, `fatal:null`. Sembol-only öğe **öge bazlı** hata döner (HTTP 200, `failed` artar,
   parti düşmez) → bozuk girdi CUDA bağlamını zehirlemez.
 
-Offline testler: **38** (`python -m pytest -q`); guard senaryoları (retry/kısa-olan-tutma/kapalı) taklit
-modelle kapsanıyor, GPU gerekmiyor.
+**İnceleme (kendi kendini denetim) — bulunan ve düzeltilen bug:** guard retry'ı kazandığında
+`res["out"]` **silinmiş** `.retry.wav` yolunu gösteriyordu (`os.replace` sonrası güncellenmiyordu).
+`pipeline.ps1` bu alanı `Test-Path` ile kullandığından **düzeltilen cümle sessizce çalınamıyordu**
+(24 üretimlik ölçümde **6 kayıt** etkilendi). Düzeltildi: `out` artık gerçek dosyayı gösteriyor
+(eski yol `retry_out`'ta), pipeline'a dosya adına düşen **savunma** eklendi; telafi maliyeti
+`guard_extra_seconds` alanına yazılıyor. Regresyon ağı: **fix'siz kodda 3 test düşüyor**, fix'le
+**39 test** geçiyor.
+
+Offline testler: **39** (`python -m pytest -q`); guard senaryoları (retry/kısa-olan-tutma/kapalı/yol
+bütünlüğü) taklit modelle kapsanıyor, GPU gerekmiyor.
