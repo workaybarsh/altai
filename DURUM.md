@@ -46,7 +46,14 @@ Repo: `github.com/workaybarsh/aybars_says`
   **kalıcı sunucu 16,6–18,5 sn** (~6×). Tam pipeline, üç sunucu açıkken **tur başına ~23–27 sn**
   (ASR ~10 + LLM ~4 + TTS ~9–12), **hiç model yüklemesi yok**.
   Ayrıntı: [`docs/tts-kiyaslama.md`](docs/tts-kiyaslama.md) §10.
-- Testler: `python -m pytest -q` → **32 test** geçiyor
+- **Uzun-kuyruk (halüsinasyon) guard'ı (2026-10-17):** `synth_chatterbox(guard=True)` — üretilen ses
+  süre sınırını (`max(3×beklenen, beklenen+2 sn)`, beklenen ≈ harf/14) aşarsa cümle **1 kez** daha
+  üretilir, **kısa olan** tutulur (`--no-guard` kapatır). Ayrıca boş/emoji-only cümleler modele
+  **hiç gitmez** (`ensure_speakable`; eskiden `IndexError`/CUDA assert ile çöküyordu).
+  **GPU ölçümü (24 üretim): 7 tetiklenme (%29), en uzun yakalanan kuyruk 6,04 sn, 0 hata**;
+  uzun cümlede hiç tetiklenmedi. ⚠️ Guard azaltır, garanti etmez. Ayrıntı ve "iki mekanizma"
+  ayrımı: [`docs/tts-kiyaslama.md`](docs/tts-kiyaslama.md) §11, karar #21.
+- Testler: `python -m pytest -q` → **38 test** geçiyor
 
 ## Önemli kararlar (özet)
 - **LLM:** Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M **+ MTP zorunlu** (kararlar #12, #13)

@@ -115,6 +115,39 @@ def tr_respell(s: str) -> str:
 
 # ------------------------------------------------------------------ chatterbox
 
+def expected_audio_seconds(text, chars_per_sec=14.0, min_seconds=0.4):
+    """Kaba konusma suresi beklentisi (TR ~14 harf/sn). Harf/rakam yoksa 0."""
+    n = sum(1 for ch in text if ch.isalnum())
+    if n == 0:
+        return 0.0
+    return max(min_seconds, n / float(chars_per_sec))
+
+
+def ensure_speakable(text):
+    """Metin uretime uygun mu? Harf/rakam yoksa (emoji/sembol-only) ValueError.
+
+    Bos cumleler zaten filtrelerden gecer (pipeline '\\p{L}|\\p{N}', `_read_lines`,
+    `server_texts`); bu kontrol ARTAN sembol-only girdiyi yakalar: Chatterbox boyle
+    girdide patliyordu (IndexError: max() non-zero size; uzun bozuk metinde CUDA
+    device-side assert -> baglam zehirlenmesi). Toplu modda oge bazli, sunucuda
+    istek-bazli hata doner; digerleri uretilmeye devam eder.
+    """
+    if not any(ch.isalnum() for ch in text):
+        raise ValueError("metin gecerli harf icermiyor (emoji/sembol?)")
+    return text
+
+
+def audio_guard_limit(text, factor=3.0, slack=2.0, chars_per_sec=14.0):
+    """Uretilen ses bu siniri asarsa 'uzun kuyruk / halusinasyon' sayilir.
+
+    sinir = max(factor * beklenen, beklenen + slack). Kisa cumlede (or. "Merhaba!")
+    beklenen ~0,5 sn -> sinir 2,5 sn; 9,6 sn'lik tasma yakalanir, 1,9 sn'lik normal
+    varyans gecer. (Dokuman: tts-kiyaslama.md §3/§9.3, tts_batch.json'daki 9,6 sn vaka.)
+    """
+    exp = expected_audio_seconds(text, chars_per_sec)
+    return max(factor * exp, exp + slack)
+
+
 def _save_wav(wav, path, sr):
     """WAV yazar. torchaudio.save bazi surumlerde torchcodec ister; once soundfile dene."""
     try:
@@ -148,7 +181,14 @@ def load_chatterbox(lang=None, device="cuda", t3_model="v3"):
 
 def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
                      exaggeration=0.5, cfg=0.5, t3_model="v3", seed=None, tr_fix=True,
-                     respell=True, model=None):
+                     respell=True, model=None, guard=True):
+    """Chatterbox ile tek cumle sentezler.
+
+    `guard=True` (varsayilan): uretilen ses `audio_guard_limit` sinirini asarsa ayni metni
+    BIR KEZ daha uretir ve **kisa olani** tutar (uzun-kuyruk/halusinasyon telafisi;
+    Chatterbox'in kendi `alignment_stream_analyzer` guard'i her zaman yetmiyor).
+    Sonuca `retried` / `audio_limit_seconds` alanlari eklenir.
+    """
     import torch
 
     # Cok dilli (MTL) model mi? lang verilirse evet. (load_chatterbox ile ayni kural;
@@ -157,8 +197,6 @@ def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
 
     if model is None:
         model = load_chatterbox(lang=lang, device=device, t3_model=t3_model)
-    if seed is not None:
-        torch.manual_seed(seed)
 
     out_dir = os.path.dirname(os.path.abspath(out_wav))
     if out_dir:
@@ -178,26 +216,54 @@ def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
     if uses_mtl:
         kwargs["language_id"] = lang
 
-    def _gen(extra):
-        return model.generate(text, **{**kwargs, **extra})
-
-    # API surumleri arasinda parametre adlari degisebilir: once zengin, olmazsa sade dene.
-    t0 = time.perf_counter()
-    try:
-        wav = _gen({"exaggeration": exaggeration, "cfg_weight": cfg})
-    except TypeError:
+    def _once(out_path, use_seed):
+        if use_seed is not None:
+            torch.manual_seed(use_seed)
+        # API surumleri arasinda parametre adlari degisebilir: once zengin, olmazsa sade dene.
+        t0 = time.perf_counter()
         try:
-            wav = _gen({"exaggeration": exaggeration})
+            wav = model.generate(text, **{**kwargs, "exaggeration": exaggeration, "cfg_weight": cfg})
         except TypeError:
-            wav = _gen({})
-    dt = time.perf_counter() - t0
+            try:
+                wav = model.generate(text, **{**kwargs, "exaggeration": exaggeration})
+            except TypeError:
+                wav = model.generate(text, **kwargs)
+        dt = time.perf_counter() - t0
+        writer = _save_wav(wav, out_path, model.sr)
+        secs = wav.shape[-1] / float(model.sr)
+        return {"out": out_path, "sample_rate": int(model.sr),
+                "audio_seconds": round(secs, 3), "tts_seconds": round(dt, 3),
+                "rtf": round((dt / secs) if secs else float("inf"), 3), "writer": writer}
 
-    writer = _save_wav(wav, out_wav, model.sr)
-    secs = wav.shape[-1] / float(model.sr)
-    return {"out": out_wav, "sample_rate": int(model.sr), "audio_seconds": round(secs, 3),
-            "tts_seconds": round(dt, 3), "rtf": round((dt / secs) if secs else float("inf"), 3),
-            "voice_prompt": voice_prompt, "language_id": lang,
-            "t3_model": t3_model if uses_mtl else None, "writer": writer}
+    res = _once(out_wav, seed)
+    limit = audio_guard_limit(text)
+    res.update({"voice_prompt": voice_prompt, "language_id": lang,
+                "t3_model": t3_model if uses_mtl else None,
+                "audio_limit_seconds": round(limit, 2)})
+
+    if guard and res["audio_seconds"] > limit:
+        # Uzun kuyruk: farkli ornekleme ile bir kez daha uret, kisa olani tut.
+        retry_path = out_wav + ".retry.wav"
+        retry_seed = (seed + 1) if seed is not None else None
+        try:
+            res2 = _once(retry_path, retry_seed)
+        except Exception as exc:
+            res["retried"] = True
+            res["retry_error"] = f"{type(exc).__name__}: {exc}"
+            return res
+        res["retried"] = True
+        res["long_tail_guard"] = True
+        if res2["audio_seconds"] < res["audio_seconds"]:
+            os.replace(retry_path, out_wav)
+            res2["first_audio_seconds"] = res["audio_seconds"]
+            res = {**res, **res2}
+        else:
+            res["retry_audio_seconds"] = res2["audio_seconds"]
+            try:
+                os.remove(retry_path)
+            except OSError:
+                pass
+    return res
 
 
 # ------------------------------------------------------------------ voxcpm (Trendyol-TTS, TR)
@@ -377,12 +443,11 @@ def create_server(args):
                 for i, t in enumerate(texts, 1):
                     out_i = os.path.join(out_dir, f"{prefix}{i}.wav")
                     try:
-                        if not any(ch.isalnum() for ch in t):
-                            raise ValueError("metin gecerli harf icermiyor (emoji/sembol?)")
+                        ensure_speakable(t)
                         r = synth_chatterbox(t, out_i, lang, voice_prompt, args.device,
                                             args.exaggeration, args.cfg, args.t3_model, args.seed,
                                             not args.chatterbox_tr_raw, not args.chatterbox_tr_raw,
-                                            model=model)
+                                            model=model, guard=not getattr(args, "no_guard", False))
                         r["ok"] = True
                     except Exception as exc:
                         r = {"ok": False, "out": out_i,
@@ -446,6 +511,8 @@ def main(argv=None) -> int:
     ap.add_argument("--t3-model", default="v3", help="chatterbox coklu dil checkpoint: v3 | v2")
     ap.add_argument("--chatterbox-tr-raw", action="store_true",
                     help="chatterbox TR duzeltmelerini KAPAT (tr_fix+respell); test/AB icin")
+    ap.add_argument("--no-guard", action="store_true",
+                    help="uzun-kuyruk (halusinasyon) telafi retry'sini KAPAT")
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--voxcpm-model", default="Trendyol/Trendyol-TTS", help="voxcpm HF model id")
     ap.add_argument("--voxcpm-cfg", type=float, default=2.0)
@@ -493,12 +560,11 @@ def main(argv=None) -> int:
             for i, line in enumerate(lines, 1):
                 out_i = f"{prefix}{i}.wav"
                 try:
-                    if not any(ch.isalnum() for ch in line):
-                        raise ValueError("metin gecerli harf icermiyor (emoji/sembol?)")
+                    ensure_speakable(line)
                     r = synth_chatterbox(line, out_i, args.lang, args.voice_prompt, args.device,
                                          args.exaggeration, args.cfg, args.t3_model, args.seed,
                                          not args.chatterbox_tr_raw, not args.chatterbox_tr_raw,
-                                         model=model)
+                                         model=model, guard=not args.no_guard)
                     r["ok"] = True
                 except Exception as exc:  # tek cumle patlarsa toplu uretim devam eder
                     r = {"ok": False, "out": out_i,
@@ -534,7 +600,8 @@ def main(argv=None) -> int:
         if args.backend == "chatterbox":
             res = synth_chatterbox(text, args.out, args.lang, args.voice_prompt, args.device,
                                    args.exaggeration, args.cfg, args.t3_model, args.seed,
-                                   not args.chatterbox_tr_raw, not args.chatterbox_tr_raw)
+                                   not args.chatterbox_tr_raw, not args.chatterbox_tr_raw,
+                                   guard=(not args.no_guard))
         elif args.backend == "voxcpm":
             res = synth_voxcpm(text, args.out, args.voxcpm_model, args.voxcpm_cfg,
                                args.voxcpm_steps, args.device, not args.no_optimize)

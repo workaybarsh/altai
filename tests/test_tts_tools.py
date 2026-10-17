@@ -3,6 +3,8 @@ import importlib.util
 import json
 import os
 
+import pytest
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPEC = importlib.util.spec_from_file_location("tts_tools", os.path.join(ROOT, "agent", "tts-tools.py"))
 tts = importlib.util.module_from_spec(SPEC)
@@ -114,6 +116,106 @@ def test_synth_chatterbox_mtl_sets_language_id(monkeypatch, tmp_path):
     assert saved["path"] == str(out)
 
 
+# ---------------------------------------------------------------- uzun-kuyruk guard
+
+def _stub_chatterbox(monkeypatch, durations):
+    """Chatterbox'i taklit eder: `durations` sirasiyla doner, _save_wav gercek dosya yazar."""
+    import sys
+    import types
+
+    fake_torch = types.ModuleType("torch")
+    fake_torch.manual_seed = lambda *a, **k: None
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+
+    saved = {}
+
+    def fake_save(wav, path, sr):
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(b"RIFF")
+        saved[path] = round(wav.shape[-1] / sr, 3)
+        return "stub"
+
+    monkeypatch.setattr(tts, "_save_wav", fake_save)
+
+    class FakeTok:
+        def preprocess_text(self, t, language_id=None, lowercase=True, nfkd_normalize=True):
+            return t
+
+    calls = {"n": 0}
+
+    class FakeWav:
+        def __init__(self, secs):
+            self.shape = (1, int(24000 * secs))
+
+    class FakeModel:
+        sr = 24000
+        tokenizer = FakeTok()
+
+        def generate(self, text, **kw):
+            i = min(calls["n"], len(durations) - 1)
+            calls["n"] += 1
+            return FakeWav(durations[i])
+
+    return FakeModel(), calls, saved
+
+
+def test_expected_audio_and_guard_limit():
+    assert tts.expected_audio_seconds("") == 0.0
+    assert tts.expected_audio_seconds("Merhaba!") == pytest.approx(0.5)   # 7 harf / 14
+    # "Merhaba!" icin sinir = max(3*0,5 ; 0,5+2,0) = 2,5 sn
+    assert tts.audio_guard_limit("Merhaba!") == pytest.approx(2.5)
+    # uzun cumlede sinir buyur (yanlis pozitif olmasin)
+    assert tts.audio_guard_limit("Bugün size nasıl yardımcı olabilirim?") > 4.0
+
+
+def test_synth_chatterbox_retries_when_audio_too_long(monkeypatch, tmp_path):
+    """9,6 sn'lik 'Merhaba!' (tts_batch.json vakasi) -> yeniden uret, kisa olani tut."""
+    model, calls, saved = _stub_chatterbox(monkeypatch, [9.6, 0.9])
+    out = tmp_path / "m.wav"
+    res = tts.synth_chatterbox("Merhaba!", str(out), lang="tr", model=model)
+
+    assert calls["n"] == 2                      # bir kez daha uretildi
+    assert res["retried"] is True
+    assert res["long_tail_guard"] is True
+    assert res["audio_seconds"] == pytest.approx(0.9, abs=0.01)   # kisa olan tutuldu
+    assert res["first_audio_seconds"] == pytest.approx(9.6, abs=0.01)
+    assert os.path.exists(out)                  # kisa cikti asil yola tasindi
+    assert not os.path.exists(str(out) + ".retry.wav")
+
+
+def test_synth_chatterbox_keeps_first_when_retry_longer(monkeypatch, tmp_path):
+    model, calls, saved = _stub_chatterbox(monkeypatch, [9.6, 12.0])
+    out = tmp_path / "m2.wav"
+    res = tts.synth_chatterbox("Merhaba!", str(out), lang="tr", model=model)
+
+    assert calls["n"] == 2
+    assert res["retried"] is True
+    assert res["audio_seconds"] == pytest.approx(9.6, abs=0.01)   # ilki daha kisa
+    assert res["retry_audio_seconds"] == pytest.approx(12.0, abs=0.01)
+    assert not os.path.exists(str(out) + ".retry.wav")            # gecici dosya silindi
+
+
+def test_synth_chatterbox_no_retry_when_normal(monkeypatch, tmp_path):
+    model, calls, saved = _stub_chatterbox(monkeypatch, [1.2])
+    out = tmp_path / "n.wav"
+    res = tts.synth_chatterbox("Merhaba!", str(out), lang="tr", model=model)
+
+    assert calls["n"] == 1
+    assert "retried" not in res
+    assert res["audio_seconds"] == pytest.approx(1.2, abs=0.01)
+
+
+def test_synth_chatterbox_guard_can_be_disabled(monkeypatch, tmp_path):
+    model, calls, saved = _stub_chatterbox(monkeypatch, [9.6])
+    out = tmp_path / "g.wav"
+    res = tts.synth_chatterbox("Merhaba!", str(out), lang="tr", model=model, guard=False)
+
+    assert calls["n"] == 1
+    assert "retried" not in res
+    assert res["audio_seconds"] == pytest.approx(9.6, abs=0.01)
+
+
 def test_server_texts_normalizes_single_and_list():
     assert tts.server_texts({"texts": "tek"}) == ["tek"]
     assert tts.server_texts({"text": "tek"}) == ["tek"]
@@ -123,6 +225,15 @@ def test_server_texts_normalizes_single_and_list():
     import pytest as _pytest
     with _pytest.raises(ValueError):
         tts.server_texts({"texts": [{"value": "x"}]})
+
+
+def test_ensure_speakable_rejects_symbol_only():
+    """Sembol-only/emoji girdi uretime HIC gitmez (Chatterbox orada patliyordu)."""
+    assert tts.ensure_speakable("Merhaba") == "Merhaba"
+    assert tts.ensure_speakable("3 elma") == "3 elma"
+    for bad in ("", "   ", "???", "!!! ...", "\U0001f60a"):
+        with pytest.raises(ValueError):
+            tts.ensure_speakable(bad)
 
 
 def test_tts_server_health_and_tts(monkeypatch, tmp_path):
@@ -170,6 +281,12 @@ def test_tts_server_health_and_tts(monkeypatch, tmp_path):
 
         body = json.dumps({"texts": ["bir", "iki"], "out_dir": str(tmp_path), "prefix": "s_"}).encode()
         out = post(f"http://127.0.0.1:{port}/tts", body)
+
+        # Sembol-only oge: oge bazli hata (HTTP 200, ok=True cunku digeri uretildi);
+        # boylece bozuk girdi CUDA baglamini zehirlemeden partiyi dusurmez.
+        body2 = json.dumps({"texts": ["tamam", "???"], "out_dir": str(tmp_path),
+                            "prefix": "x_"}).encode()
+        out2 = post(f"http://127.0.0.1:{port}/tts", body2)
     finally:
         srv.shutdown()
         srv.server_close()
@@ -178,6 +295,12 @@ def test_tts_server_health_and_tts(monkeypatch, tmp_path):
     assert out["count"] == 2 and out["failed"] == 0
     assert os.path.exists(tmp_path / "s_1.wav")
     assert os.path.exists(tmp_path / "s_2.wav")
+
+    assert out2["ok"] is True and out2["failed"] == 1
+    bad = [r for r in out2["results"] if not r["ok"]]
+    assert len(bad) == 1 and bad[0]["index"] == 2
+    assert "harf icermiyor" in bad[0]["error"]
+    assert not os.path.exists(tmp_path / "x_2.wav")   # uretilmedi
 
 
 def test_json_handles_emoji_without_crashing(tmp_path):

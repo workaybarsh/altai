@@ -27,7 +27,7 @@ Proje: aybars_says — sesli (STT+TTS) yerel yapay zekâ sohbet uygulaması.
    Kurulumlar: tools\whisper, tools\llama, models\ (turbo-q5_0 + MTP'li 9B)
 
 Hazır araçlar: agent/mtp_inject.py; agent/asr-tools.py (--server-url); agent/tts-tools.py
-(chatterbox / voxcpm / piper / sapi + --batch-file + --serve); agent/pipeline.ps1
+(chatterbox / voxcpm / piper / sapi + --batch-file + --serve + uzun-kuyruk guard); agent/pipeline.ps1
 (-AsrServerUrl / -TtsServerUrl); scripts/whisper-server.ps1; scripts/tts-server.ps1
-— testler: python -m pytest -q (32 test)
+— testler: python -m pytest -q (38 test)
 ```

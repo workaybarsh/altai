@@ -233,8 +233,9 @@ Kalan tek hata ("çalışan"→"çalıyan") için **respell** denendi: **`ş` �
 `python -m pytest -q` → **20 test**.
 
 > Not: bazı üretimlerde model "forcing EOS" uyarısı verip bir kelimeyi bozabiliyor (üretim varyansı) →
-> şüpheli örnekte aynı cümle yeniden üretilir. Respell, "ş"yi düzeltir; **ğ/ç için gerekirse** benzer
-> ipuçları eklenebilir (henüz gerekmedi).
+> şüpheli örnekte aynı cümle yeniden üretilir. **2026-10-17: bu artık kodda** — uzun-kuyruk guard'ı
+> (süre sınırı + 1 retry) [`§11`](#11-uzun-kuyruk-halüsinasyon-guardı-2026-10-17). Respell, "ş"yi
+> düzeltir; **ğ/ç için gerekirse** benzer ipuçları eklenebilir (henüz gerekmedi).
 
 **Çözüm yolları (kolaydan ağıra):**
 
@@ -266,7 +267,64 @@ Aynı 4 cümle (LLM çıktısı), RTX 5060 Ti, `--lang tr` (tr-fix + respell oto
 - Chatterbox üretim **RTF ~1,2–1,4** (gerçek zamandan yavaş) → üretim süresi çıktı sesinden uzun;
   ilk ses `<1 sn` hedefi TTS tarafında da tutmuyor.
 - ⚠️ Çok kısa cümlede ("Merhaba!") RTF ~3,7'ye çıkıyor ve 9,6 sn'lik ses üretilebiliyor
-  (kısa cümle kararsızlığı, bkz. §3).
+  (kısa cümle kararsızlığı, bkz. §3). **Çözüm: uzun-kuyruk guard'ı → §11.**
 - ⚠️ **CUDA tuzağı:** bozuk/uygunsuz girdi `device-side assert` ile CUDA bağlamını **kalıcı** bozar;
   sunucu yeniden başlatılmalıdır. Bu yüzden `tts-server` artık metin olmayan öğeleri **400** ile
   reddeder ve `/health` içinde `fatal` alanıyla bunu bildirir.
+
+## 11. Uzun-kuyruk (halüsinasyon) guard'ı (2026-10-17)
+
+**Soru:** "Halüsinasyonu boşları göndermeyerek çözmüştük" — bu doğru mu?
+
+**Yanıt: iki ayrı mekanizma karışıyor.** Ölçüm + kod incelemesiyle ayrıştırıldı:
+
+| Mekanizma | Neyi engelliyor | Kanıt |
+|---|---|---|
+| **Boş/sembol-only filtreleme** (`pipeline.ps1` `\p{L}\|\p{N}`, `_read_lines`, `server_texts`, `ensure_speakable`) | **Çökme**: emoji-only cümle → `IndexError: max(): Expected reduction dim 1 to have non-zero size`; uzun bozuk metin → `CUDA device-side assert` (bağlam kalıcı zehirlenir) | Hata logları; satırlar artık modele **hiç gitmiyor** |
+| **Chatterbox `alignment_stream_analyzer`** (modelin kendi guard'ı) | **Taşan/kurgu ses** (uzun kuyruk, token tekrarı) | Her üretimde log: `forcing EOS token, long_tail=tensor(True)`; erken testte `Detected 2x repetition of token 6405` → EOS zorlandı |
+
+Yani "boşları göndermeme" **sağlamlık** korumasıydı; taşmayı kesen şey modelin kendi guard'ı.
+Ama o guard **deterministik değil** — aynı cümle farklı sürelerde çıkıyor (`logs\pipeline\tts_batch.json`):
+
+| Cümle (harf) | Üretilen ses |
+|---|---|
+| **"Merhaba!"** (7) | **9,60 sn** ⚠️ |
+| "Benim için tam bir karşılama." (26) | 4,96 sn |
+| "Sanki bir yedek ses çıkmış gibi duyuluyor ama neyse." (49) | 4,24 sn |
+| "Bugün size nasıl yardımcı olabilirim?" (33) | 3,44 sn |
+
+8 karakterlik cümle 9,6 sn ses üretirken 33 karakterlik cümle 3,4 sn'de kaldı → **kısa cümle
+kararsızlığı** (§3 ile uyumlu).
+
+### 11.1 Çözüm: süre sanity-guard + 1 retry
+
+`synth_chatterbox(..., guard=True)` (varsayılan; `--no-guard` kapatır):
+- `beklenen ≈ harf_sayısı / 14` sn (TR, min 0,4) → `audio_guard_limit = max(3×beklenen, beklenen + 2)`
+- üretilen ses sınırı aşarsa **aynı cümle BİR kez daha** üretilir ve **kısa olan** tutulur
+  (retry seed'i `seed+1`; sonuca `retried` / `long_tail_guard` / `audio_limit_seconds` yazılır)
+
+### 11.2 GPU ölçümü (24 üretim: 6 kısa cümle × 4 seed)
+
+| Cümle | seed | sınır | ilk üretim | guard sonrası |
+|---|---|---|---|---|
+| Tamam. | 100 | 2,40 | 2,76 | **0,68** |
+| Peki, anladım. | 100 | 2,79 | 4,92 | **1,12** |
+| Evet. | 101 | 2,40 | 2,56 | 2,56 *(retry 2,60 → ilki kaldı)* |
+| Tamam. | 102 | 2,40 | 3,56 | **1,12** |
+| Evet. | 102 | 2,40 | 2,60 | **1,44** |
+| Peki, anladım. | 102 | 2,79 | 6,04 | **3,00** |
+| Peki, anladım. | 103 | 2,79 | 3,00 | **1,96** |
+
+- Guard **7/24 (%29)** tetiklendi, **en uzun yakalanan kuyruk 6,04 sn**, **0 hata/çökme**.
+- Uzun cümlelerde (sınır 4,9–6,9 sn) **hiç** tetiklenmedi → yanlış pozitif yok.
+- **Maliyet:** tetiklenen cümle başına ~1 ek üretim (24 üretimde 7 ek) — ortalama üretim 3,44 sn,
+  yani kısa cümlede ~%30 ek süre; uzun cümlelerde sıfır.
+- ⚠️ **Garanti değil:** bazen sınır yine aşılıyor (2,56 ve 3,00 sn satırları) çünkü iki üretim de
+  uzun olabiliyor; guard *azaltır*. Gerekirse 2. retry veya sabit üst sınır eklenebilir (konuşmayı
+  kesme riski).
+- **Canlı yol (kalıcı sunucu) doğrulandı:** `Merhaba!` → 2,72 sn *(retried)*, `Evet.` → 1,12 sn, 0 hata;
+  `/health` `ok:true`, `fatal:null`. Sembol-only öğe **öge bazlı** hata döner (HTTP 200, `failed` artar,
+  parti düşmez) → bozuk girdi CUDA bağlamını zehirlemez.
+
+Offline testler: **38** (`python -m pytest -q`); guard senaryoları (retry/kısa-olan-tutma/kapalı) taklit
+modelle kapsanıyor, GPU gerekmiyor.
