@@ -77,7 +77,7 @@ Sesli asistan tipik olarak **kısa** yanıt üretir (0–50 karakter). Paper'ın
 | Motor | VRAM | RTF | TR anlaşılırlık (geri-çevirim WER) |
 |---|---|---|---|
 | **Trendyol-TTS** (=VoxCPM2 + TR LoRA) | ~5,3–5,6 GB | ~3,0 (gerçek zamandan ~3× yavaş) | ~0,08 (temiz örnek) |
-| Chatterbox | ~2–3 GB (belgelenen) | GPU'da hızlı | **zayıf** (projede gözlendi) |
+| Chatterbox | **~3,3 GB** (ölçüm) | **RTF ~1,1** (ölçüm) | ✅ iyi (tr-fix+respell ile) |
 | SAPI | 0 (CPU) | çok hızlı | ❌ bu makinede **Türkçe ses yok** (yalnız Zira en-US) |
 
 ## 6. Sonuç ve projeye etkisi
@@ -219,7 +219,7 @@ Aynı **doğru Türkçe** cümleyle üretilen örnekler dinlendi:
 
 **Karar (kulak testiyle, 2026-10-17):** **Her ikisi de iyi** — **Chatterbox (tr-fix + respell)** ve
 **Trendyol**. Diğer varyantlar (yamasız / ASCII) elendi. Fark:
-- **Chatterbox** → **hafif + hızlı** (~2 GB, RTF ~1,4) ⇒ **canlı hat adayı** (İngilizce de iyi).
+- **Chatterbox** → **hafif + hızlı** (ölçüm: ~3,3 GB, RTF ~1,1) ⇒ **canlı hat adayı** (İngilizce de iyi).
 - **Trendyol** → **native TR** ama **ağır + yavaş** (~5,6 GB, RTF ~3,4) ⇒ **çevrimdışı / yüksek kalite**.
 
 ### 9.3 "ş" için respell çözümü (2026-10-17)
