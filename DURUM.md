@@ -71,27 +71,37 @@ Repo: `github.com/workaybarsh/aybars_says`
   → akışlı hatta üretilen 3 WAV "kayıp" görünüyordu (`Test-Path` yanlış `False`; tuzak #15). Tüm
   JSON okumaları `-Encoding UTF8`'e alındı; ASR yolu `--out` + dosyadan okumaya çevrildi (stdout
   boru hattı kodlamayı bozabiliyor).
-- Testler: `python -m pytest -q` → **52 test** geçiyor
+- **TTS darboğazı ÇÖZÜLDÜ — Piper (2026-10-18):** `tts-tools.py --serve --backend piper` +
+  `scripts/piper-kur.ps1` (ASCII dizine kurar: `%LOCALAPPDATA%\aybars\piper`). Piper
+  `tr_TR-dfki-medium`: **RTF 0,19**, geri-çevirim **WER 0,000** (5/5 cümle birebir), **CPU'da** (GPU yok).
+  Akışlı hatta **ilk ses (LLM+TTS): 0,77–0,90 sn** (Chatterbox 4,2–7,6 sn; guard retry ile 30 sn).
+  Uçtan uca (ASR + piper): **~11,7 sn** (Chatterbox 13,4 sn) → **ASR hâlâ baskın (%85)**.
+  Ayrıntı: [`docs/akishli-hat.md`](docs/akishli-hat.md) §5.2, [`docs/tts-kiyaslama.md`](docs/tts-kiyaslama.md) §5.
+  ⚠️ Piper (espeak-ng/onnxruntime) **non-ASCII yolu okuyamıyor** → ikili ve ses dosyası ASCII dizinde
+  olmalı; aynı sınır `whisper-cli.exe`'de de var (non-ASCII **mutlak** yolda `0xC0000409`).
+- Testler: `python -m pytest -q` → **54 test** geçiyor
 
 ## Önemli kararlar (özet)
 - **LLM:** Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M **+ MTP zorunlu** (kararlar #12, #13)
 - **STT:** whisper.cpp `large-v3-turbo` (karar #11); CPU'da **q5_0 quant + mantıksal thread**;
   canlı hat için **kalıcı `whisper-server`**
-- **TTS:** İngilizce **Chatterbox** (MIT). TR: **Chatterbox (tr-fix + respell)** canlı aday (~3,3 GB),
-  **Trendyol-TTS** çevrimdışı (~5,6 GB, RTF ~3,4). (kararlar #16/#18)
+- **TTS:** İngilizce **Chatterbox** (MIT). TR: **Piper** (`tr_TR-dfki-medium`, **CPU**, RTF 0,19,
+  WER 0,000, ilk ses ~0,8 sn) — **canlı için en hızlı aday** (varsayılan kararı onay bekliyor);
+  **Chatterbox (tr-fix+respell)** doğallık için (~3,3 GB GPU, RTF ~1,2); **Trendyol-TTS** çevrimdışı
+  (~5,6 GB, RTF ~3). (kararlar #16/#18; Piper ölçümü `docs/akishli-hat.md` §5.2)
 
 ## Açık işler / sıradaki adımlar
-0. ✅ **Pipeline + toplu TTS + kalıcı sunucular bağlandı ve ölçüldü (2026-10-17).** Ancak:
-   - ⚠️ **`<1 sn` hedefi bu donanımda tutmuyor.** ASR turbo ~10 sn (whisper encoder her istekte
-     **30 sn penceresini** encode ediyor → kısa seste sabit maliyet); Chatterbox GPU'da **RTF ~1,29**
-     (gerçek zamandan yavaş). Kalıcı sunucularla **tur ~23–27 sn** (yükleme yok).
-   - **Sıradaki karar (biri/birkaçı):**
-     - **ASR'de `small`/`medium`** (hız↔doğruluk takası) veya whisper'ı GPU'ya al (mimari kuralı değişir).
-     - **`piper`** (CPU, hızlı ama robotik) canlı yedek TTS olarak denenebilir.
-     - ✅ **Akışlı hat YAPILDI (2026-10-18):** ilk ses 18,8 → **7,05–7,60 sn** (karar #22,
-       [`docs/akishli-hat.md`](docs/akishli-hat.md)).
-     - ⬜ **Yeni açık iş:** kısa cümlede guard retry'ı sınırlamak (ör. <20 harfte retry yok ya da
-       sınır tabanı) veya kısa ünlemler için hazır ses — ölçülüp karar verilecek.
+0. ✅ **Pipeline + akışlı hat + kalıcı sunucular bağlandı ve ölçüldü (2026-10-17/18).**
+   - ✅ **TTS tarafı çözüldü:** akışlı hat (karar #22) + **Piper** (CPU, RTF 0,19, WER 0,000) →
+     **ilk ses (LLM+TTS) 0,77–0,90 sn** — hedefin (<1 sn) içinde.
+   - ⚠️ **Kalan tek darboğaz ASR** (~10 sn; uçtan uca sürenin ~%85'i). whisper turbo her istekte
+     **30 sn penceresini** encode ediyor → kısa seste sabit maliyet; `-ac` reddedildi (tekrar döngüsü).
+   - **Sıradaki karar:** ASR'de `small`/`medium` (hız↔doğruluk takası) **veya** whisper'ı GPU'ya al
+     (mimari kural değişir) **veya** VAD/akışlı ASR ile gizle (turbo CPU'da RTF>1 → zor).
+   - ⬜ **Karar bekliyor:** Piper canlı hattın **varsayılan TTS'i** olsun mu? (ölçüm hazır, onay bekliyor;
+     Piper CPU'da çalıştığı için GPU'yu tümüyle LLM'e bırakır — mimari ilke #1).
+   - ⬜ **Açık iş (yalnız Chatterbox kalırsa):** kısa cümlede guard retry'ı sınırlamak (ör. <20 harfte
+     retry yok / sınır tabanı) veya kısa ünlemler için hazır ses.
 1. **Türkçe TTS:** Trendyol-TTS ağır (VRAM ~5,6 GB, RTF ~3) → çevrimdışı. Canlı TR adayları
    **CosyVoice2 / XTTS-v2** (hız + VRAM ölçülmeli). Beğenilmezse Piper.
 2. **Fish S2 Pro:** yalnız izole WSL denemesi (Türkçe zayıf, silindi; WSL kaldı).
@@ -115,6 +125,10 @@ Repo: `github.com/workaybarsh/aybars_says`
   `pipeline.ps1 -AsrServerUrl http://127.0.0.1:8081 -TtsServerUrl http://127.0.0.1:8082`.
   **Akışlı hat:** `pipeline-stream.ps1` (aynı sunucular; `-Play` ile üretilen sesi hemen çalar).
   ⚠️ `tts-server` bozuk girdide CUDA bağlamını kaybederse `/health` `fatal` döner → yeniden başlat.
+- **Piper (CPU TTS, 2026-10-18):** `scripts\piper-kur.ps1` → `%LOCALAPPDATA%\aybars\piper`
+  (`piper.exe` + `voice.onnx`); sonra `scripts\tts-server.ps1 -Backend piper -Port 8082`.
+  ⚠️ **ASCII dizin şart** (espeak-ng non-ASCII yolu okuyamaz; onnxruntime `0xC0000409` çöker).
+  Ayrıntı + ölçüm: [`docs/akishli-hat.md`](docs/akishli-hat.md) §5.2.
 - **llama-server (MTP) çalıştırma** (düşünme açık, bütçe 256; port 8080). ⚠️
   `--reasoning-budget-message` boşluk içerdiği için **tırnaklanmalı ve `=` biçimi kullanılmamalı**:
   ```

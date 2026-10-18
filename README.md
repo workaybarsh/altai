@@ -16,10 +16,11 @@ konuşursun, bot **sesle** yanıt verir.
 - Bu repo ağırlıklı olarak bir **tasarım/plan dokümanıdır**; çalışan araçlar `agent/` altındadır.
 - Her karar, gerekçesi ve **vazgeçilen alternatif** burada not edilir (bkz. [`docs/kararlar.md`](docs/kararlar.md)).
 - Ölçüm ve AR-GE sonuçları geldikçe aynı belgeler güncellenir.
-- ⚠️ **Ölçüldü (2026-10-17/18): `<1 sn` hedefi bu donanımda (Ryzen 5 3600 / RTX 5060 Ti) tutmuyor.**
+- ⚠️ **Ölçüldü (2026-10-17/18): tek gerçek darboğaz artık STT.**
   STT `large-v3-turbo` CPU'da ~10 sn (q5_0, encoder 30 sn penceresi); `base`/`small` hızlı ama
-  Türkçe doğruluğu zayıf. TTS Chatterbox GPU'da RTF ~1,2. **Akışlı hatla ilk ses 18,8 sn → 7,05–7,60 sn**
-  (LLM+TTS; uçtan uca ASR ile 13,4 sn). Ayrıntı: [`docs/akishli-hat.md`](docs/akishli-hat.md),
+  Türkçe doğruluğu zayıf. **TTS tarafı çözüldü:** akışlı hat + **Piper** (CPU, RTF 0,19, geri-çevirim
+  WER 0,000) ile **ilk ses (LLM+TTS) 0,77–0,90 sn** (Chatterbox 4,2–7,6 sn). Uçtan uca (ASR + Piper)
+  **~11,7 sn** → kalan darboğaz **ASR (~%85)**. Ayrıntı: [`docs/akishli-hat.md`](docs/akishli-hat.md) §5,
   [`docs/faz2-sonuc.md`](docs/faz2-sonuc.md), [`docs/kararlar.md`](docs/kararlar.md) #19/#22.
 
 ## Hedef

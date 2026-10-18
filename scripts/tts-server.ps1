@@ -19,6 +19,8 @@ param(
     [string]$Device = 'cuda',
     [string]$T3Model = 'v3',
     [string]$VoicePrompt = '',
+    [string]$Piper = '',
+    [string]$PiperModel = '',
     [string]$Bind = '127.0.0.1',
     [int]$Port = 8082,
     [string]$LogDir = 'logs',
@@ -60,8 +62,21 @@ $args = @('agent\tts-tools.py', '--serve', '--backend', $Backend, '--lang', $Lan
           '--device', $Device, '--t3-model', $T3Model, '--host', $Bind, '--port', $Port)
 if ($VoicePrompt) { $args += @('--voice-prompt', $VoicePrompt) }
 
+# piper: ONEMLI - ikili ve ses dosyasi ASCII yolda olmali (espeak-ng/onnxruntime non-ASCII
+# yolda coker). Varsayilan: %LOCALAPPDATA%\aybars\piper (ASCII).
+if ($Backend -eq 'piper') {
+    if (-not $Piper) { $Piper = Join-Path $env:LOCALAPPDATA 'aybars\piper\piper.exe' }
+    if (-not $PiperModel) { $PiperModel = Join-Path $env:LOCALAPPDATA 'aybars\piper\voice.onnx' }
+}
+if ($Piper) { $args += @('--piper', $Piper) }
+if ($PiperModel) { $args += @('--piper-model', $PiperModel) }
+
 Write-Host "tts-server baslatiliyor (backend=$Backend, lang=$Lang, device=$Device, $Bind`:$Port)"
-Write-Host "model yukleniyor (torch+Chatterbox ~20 sn surebilir)..."
+if ($Backend -eq 'piper') {
+    Write-Host "piper: ikili=$Piper ses=$PiperModel (yukleme yok; her istek ~0,3 sn)"
+} else {
+    Write-Host "model yukleniyor (torch+Chatterbox ~20 sn surebilir)..."
+}
 $proc = Start-Process -FilePath $Python -ArgumentList $args -WorkingDirectory $root `
     -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru -WindowStyle Hidden
 $proc.Id | Set-Content -LiteralPath $pidFile

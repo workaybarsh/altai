@@ -385,8 +385,20 @@ def create_server(args):
 
     def ensure_model():
         if state["model"] is None:
+            if args.backend == "piper":
+                # piper'da "model" bellekte tutulmaz: her istek kisa omurlu piper.exe calistirir
+                # (~0,27 sn ses yukleme). Burada yalnizca ikili + ses dosyasi dogrulanir.
+                import shutil
+                exe = args.piper or shutil.which("piper")
+                if not exe or not os.path.exists(exe):
+                    raise RuntimeError(f"piper bulunamadi (PATH ya da --piper): {args.piper}")
+                if not args.piper_model or not os.path.exists(args.piper_model):
+                    raise RuntimeError(f"piper modeli bulunamadi: {args.piper_model}")
+                state["model"] = {"piper": exe}
+                state["load_seconds"] = 0.0
+                return state["model"]
             if args.backend != "chatterbox":
-                raise RuntimeError("sunucu modu su an yalnizca chatterbox icin")
+                raise RuntimeError("sunucu modu chatterbox ve piper icin destekler")
             t0 = time.perf_counter()
             state["model"] = load_chatterbox(lang=args.lang, device=args.device,
                                              t3_model=args.t3_model)
@@ -449,10 +461,13 @@ def create_server(args):
                     out_i = os.path.join(out_dir, f"{prefix}{i}.wav")
                     try:
                         ensure_speakable(t)
-                        r = synth_chatterbox(t, out_i, lang, voice_prompt, args.device,
-                                            args.exaggeration, args.cfg, args.t3_model, args.seed,
-                                            not args.chatterbox_tr_raw, not args.chatterbox_tr_raw,
-                                            model=model, guard=not getattr(args, "no_guard", False))
+                        if args.backend == "piper":
+                            r = synth_piper(t, out_i, args.piper_model, args.piper)
+                        else:
+                            r = synth_chatterbox(t, out_i, lang, voice_prompt, args.device,
+                                                args.exaggeration, args.cfg, args.t3_model, args.seed,
+                                                not args.chatterbox_tr_raw, not args.chatterbox_tr_raw,
+                                                model=model, guard=not getattr(args, "no_guard", False))
                         r["ok"] = True
                     except Exception as exc:
                         r = {"ok": False, "out": out_i,

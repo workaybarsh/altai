@@ -356,3 +356,79 @@ def test_batch_needs_out_prefix_or_out(tmp_path, capsys):
     assert code == 2
     assert payload["ok"] is False
     assert "out-prefix" in payload["error"]
+
+
+def _post_json(url, data):
+    import time
+    import urllib.request
+    last = None
+    for _ in range(3):
+        try:
+            req = urllib.request.Request(url, data=data, method="POST",
+                                         headers={"Content-Type": "application/json"}) if data else url
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except (ConnectionError, OSError) as exc:
+            last = exc
+            time.sleep(0.2)
+    raise last
+
+
+def test_tts_server_piper_dispatch(monkeypatch, tmp_path):
+    """piper sunucu modu: model bellege alinmaz; her istek synth_piper'a gider (GPU gerekmez)."""
+    import threading
+    import types
+
+    exe = tmp_path / "piper.exe"
+    exe.write_bytes(b"x")
+    model = tmp_path / "voice.onnx"
+    model.write_bytes(b"y")
+
+    calls = []
+
+    def fake_piper(text, out_wav, model_path=None, piper_exe=None):
+        calls.append((text, model_path, piper_exe))
+        os.makedirs(os.path.dirname(os.path.abspath(out_wav)), exist_ok=True)
+        with open(out_wav, "wb") as f:
+            f.write(b"RIFF")
+        return {"out": out_wav, "audio_seconds": 1.0, "tts_seconds": 0.1, "rtf": 0.1}
+
+    monkeypatch.setattr(tts, "synth_piper", fake_piper)
+
+    args = types.SimpleNamespace(backend="piper", lang="tr", device="cpu", t3_model="v3",
+                                 exaggeration=0.5, cfg=0.5, seed=None, chatterbox_tr_raw=False,
+                                 voice_prompt=None, host="127.0.0.1", port=0,
+                                 piper=str(exe), piper_model=str(model))
+    srv = tts.create_server(args)
+    srv.ensure_model()          # piper icin yukleme yok, yalniz dogrulama
+    port = srv.server_address[1]
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        health = _post_json(f"http://127.0.0.1:{port}/health", None)
+        body = json.dumps({"texts": ["merhaba", "dunya"], "out_dir": str(tmp_path),
+                           "prefix": "p_"}).encode()
+        out = _post_json(f"http://127.0.0.1:{port}/tts", body)
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+    assert health["ok"] is True and health["backend"] == "piper"
+    assert health["loaded"] is True and health["load_seconds"] == 0.0
+    assert out["ok"] is True and out["count"] == 2 and out["failed"] == 0
+    assert [c[0] for c in calls] == ["merhaba", "dunya"]
+    assert calls[0][1] == str(model) and calls[0][2] == str(exe)
+    assert os.path.exists(tmp_path / "p_1.wav")
+
+
+def test_tts_server_piper_missing_model_raises(tmp_path):
+    """piper sunucu modu: eksik ikili/ses dosyasi durust hata verir (sessiz dusmez)."""
+    import types
+
+    args = types.SimpleNamespace(backend="piper", lang="tr", device="cpu", t3_model="v3",
+                                 exaggeration=0.5, cfg=0.5, seed=None, chatterbox_tr_raw=False,
+                                 voice_prompt=None, host="127.0.0.1", port=0,
+                                 piper=str(tmp_path / "yok.exe"),
+                                 piper_model=str(tmp_path / "yok.onnx"))
+    srv = tts.create_server(args)
+    with pytest.raises(RuntimeError):
+        srv.ensure_model()

@@ -100,14 +100,47 @@ Uçtan uca (gerçek ASR ile, `-Wav`; whisper turbo CPU):
   tamamlandı. Yol/aynı hat sonrası `out` alanı 3/3 WAV'ı doğru buldu (aşağıdaki tuzak düzeltmesi).
 
 
+### 5.2 TTS motoru değişimi: Chatterbox → Piper (2026-10-18, aynı oturum)
+
+Akışlı hatta asıl darboğaz **cümle başına TTS maliyeti** oldu (Chatterbox GPU'da RTF ~1,2 =
+konuşmadan *yavaş*). Piper (CPU, `tr_TR-dfki-medium`) ile aynı istem, aynı oturumda A/B:
+
+| TTS motoru | İlk token | İlk cümle | **İlk ses** | Tur sonu |
+|---|---|---|---|---|
+| Chatterbox (GPU) #1 | 0,26 sn | 0,33 sn | **30,17 sn** ⚠️ *(guard retry)* | 51,49 sn |
+| Chatterbox (GPU) #2 | 0,26 sn | 0,33 sn | **4,23 sn** | 18,79 sn |
+| **Piper (CPU)** #1 *(soğuk)* | 0,48 sn | 0,54 sn | **2,21 sn** | 3,40 sn |
+| **Piper (CPU)** #2 | 0,25 sn | 0,35 sn | **0,90 sn** | 2,91 sn |
+| **Piper (CPU)** #3 | 0,25 sn | 0,29 sn | **0,77 sn** | 2,06 sn |
+
+Piper tek başına (5 cümle, `logs/piper-test/`): **RTF 0,19** (sentez 2,40 sn / ses 12,52 sn);
+geri-çevirim (whisper turbo) **WER 0,000** — 5/5 cümle birebir, diakritikler doğru.
+
+**Okunuşu:**
+- **LLM + TTS ilk sesi hedefin içine indi: ~0,8–0,9 sn** (Chatterbox'ta 4,2–7,6 sn; guard retry ile 30 sn).
+- Piper **CPU'da** çalışır → mimari **ilke #1**'i ("STT ve TTS CPU'da") geri getirir ve GPU'yu tamamen
+  LLM'e bırakır; ayrıca **guard retry yok** (deterministik, süre-bağımlı halüsinasyon üretmiyor).
+- Soğuk ilk koşu (2,21 sn) LLM ilk turuna denk gelir; ısınmış hâlde ilk ses **0,77–0,90 sn**.
+
+Uçtan uca (gerçek ASR + akışlı Piper, `-Wav`; whisper turbo CPU):
+
+| Koşu | ASR | İlk cümle | İlk ses (motorda) | **Uçtan uca ilk ses** |
+|---|---|---|---|---|
+| **F) ASR + Piper** | 5,24 sn ses → **9,95 sn** (RTF 1,90) | 0,35 sn | 1,78 sn | **~11,7 sn** |
+
+**Yeni darboğaz tablosu:** ASR ~10 sn (**%85**) · LLM ilk cümle ~0,3 sn · TTS ~0,5 sn.
+Yani **TTS tarafı çözüldü**; `<1 sn` artık yalnız **ASR**'de düğümlü.
+
+
 ## 6. Bilinen sınırlar / sonraki adımlar
 
 - Cümle başına bir TTS isteği → cümle sayısı kadar istek; uzun yanıtta toplam TTS süresi toplu
   moda göre biraz artabilir (ama **ilk ses** çok erken gelir).
 - Cümle sınırı **tahmini**dir (noktalama/uzunluk sezgisi); markdown/emoji içeren yanıtlarda
   TTS'e gitmeden önce temizlik gerekebilir (şimdilik yalnız sembol-only atlanır).
-- İlk ses hâlâ **ASR** ile sınırlı (CPU'da ~10 sn). Gerçek `<1 sn` için ASR'de ya model/küçültme
-  ya da GPU gerekir (açık karar — `kararlar.md` #19).
+- TTS tarafı **Piper ile çözüldü**: ilk ses (LLM+TTS) 7,0–7,6 sn → **0,8–0,9 sn** (§5.2). Kalan tek
+  darboğaz **ASR** (CPU'da ~10 sn; tüm uçtan uca sürenin ~%85'i). Gerçek `<1 sn` için ASR'de ya
+  model küçültme ya da GPU gerekir (açık karar — `kararlar.md` #19).
 - ⚠️ **Kısa cümle + guard retry:** guard ses sınırı aşılırsa cümleyi ikinci kez üretir; kısa
   cümlelerde iki üretim de uzun kalabiliyor → ilk ses 13–18 sn'ye çıkıyor. Seçenekler: kısa
   cümlede (ör. <20 harf) retry'ı kapatmak/sınırı tabanlamak, en kısayı 3 üretimden seçmek veya

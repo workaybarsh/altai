@@ -72,8 +72,14 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 |---|---|---|---|---|---|
 | **Chatterbox Multilingual v3** | En yüksek | ⚠️ zayıf | GPU | MIT | EN birincil |
 | **Trendyol-TTS** (`voxcpm`, VoxCPM2 + TR LoRA, ~2B) | Yüksek | ✅ anlaşılır | ❌ RTF ~3, ~5,6 GB VRAM | MIT | **TR çevrimdışı/yüksek kalite** |
-| **Piper** | Orta | ✅ | ✅ CPU | GPL-3.0 | Hızlı/yedek |
+| **Piper** | Orta | ✅ **WER 0,000** | ✅ **RTF 0,19 · CPU** | GPL-3.0 | **Hızlı/canlı aday** |
 | Windows SAPI | Düşük | ✅ | ✅ | — | Son çare |
+
+> **Ölçüldü (2026-10-18):** Piper `tr_TR-dfki-medium` — 5 cümle **RTF 0,19**;
+> geri-çevirim (whisper turbo) **WER 0,000** (5/5 birebir, diakritik doğru). Akışlı hatta
+> **ilk ses 0,77–0,90 sn** (Chatterbox 4,2–7,6 sn). **CPU'da** çalışır → GPU tümüyle LLM'de
+> (ilke #1) ve guard retry yok. Kurulum `scripts/piper-kur.ps1` (⚠️ **ASCII dizin şart**, tuzak #16).
+> Ayrıntı: [`docs/akishli-hat.md`](docs/akishli-hat.md) §5.2.
 
 > **Ölçüldü (2026-10-16):** Trendyol-TTS Türkçe **anlaşılır** (geri-çevirim Whisper WER ~0,08) ama
 > ~5,6 GB VRAM + RTF ~3 → hedef 8 GB kartta yerleşik LLM ile sığmaz ve `<1 sn` hedefini yer.
@@ -94,8 +100,9 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 | ✅ | `agent/asr-tools.py` | 16 kHz mono dönüştürme + **whisper.cpp** çıkarımı (tek-atım **veya** `--server-url` ile kalıcı `whisper-server`) + gecikme/RTF ölçümü |
 | ✅ | `scripts/asr-olcum.ps1` | Faz 2 ASR ölçüm koşum takımı (sarmalayıcı) |
 | ✅ | `scripts/whisper-server.ps1` | Kalıcı `whisper-server` başlat/durdur (`-ng`, port 8081); model bellekte kalır |
-| ✅ | `scripts/tts-server.ps1` | Kalıcı TTS sunucusu (`tts-tools.py --serve`, port 8082); Chatterbox bellekte kalır |
-| ✅ | `agent/tts-tools.py` | Takas edilebilir TTS: Chatterbox / **voxcpm** (Trendyol-TTS, TR) / Piper / SAPI + **toplu mod** (`--batch-file`) + **kalıcı sunucu** (`--serve`) + **uzun-kuyruk guard** (süre sınırı + 1 retry; `--no-guard`) |
+| ✅ | `scripts/tts-server.ps1` | Kalıcı TTS sunucusu (`tts-tools.py --serve`, port 8082); Chatterbox bellekte kalır · `-Backend piper` ile **CPU Piper** (yükleme yok) |
+| ✅ | `scripts/piper-kur.ps1` | Piper + `tr_TR-dfki-medium` sesini **ASCII dizine** kurar (`%LOCALAPPDATA%\aybars\piper`; repo yolu non-ASCII olduğu için şart) |
+| ✅ | `agent/tts-tools.py` | Takas edilebilir TTS: Chatterbox / **voxcpm** (Trendyol-TTS, TR) / **Piper** / SAPI + **toplu mod** (`--batch-file`) + **kalıcı sunucu** (`--serve`; chatterbox **veya piper**) + **uzun-kuyruk guard** (Chatterbox; süre sınırı + 1 retry; `--no-guard`) |
 | ✅ | `agent/pipeline.ps1` | Boru hattı (**toplu/referans yol**): ASR → LLM (HTTP) → cümle bölme → **toplu** TTS (model tek yükleme) |
 | ✅ | `agent/llm-stream.py` | **Akışlı tur motoru:** `llama-server` **SSE** → kademeli cümle bölme → cümle başına TTS → arka planda çalma; zaman damgalı JSON (`reasoning_content` yok sayılır, sembol-only atlanır, geçici ağ hatasında 2 deneme) |
 | ✅ | `agent/pipeline-stream.ps1` | **Akışlı** boru hattı (ASR + `llm-stream.py`): ilk sesi erken çıkarır (ilke #7) |
@@ -110,12 +117,13 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 | Endpoint | 0–200 ms | Bas-konuş = 0; VAD + ~200 ms eşik |
 | STT | ≤ 400 ms | whisper.cpp `large-v3-turbo` (gerekirse `medium`/`small`). Ölçüm: turbo ~10 sn, medium ~7,5 sn, small ~2,5 sn, base ~0,84 sn (CPU; ⚠️ hedef bu donanımda tutmuyor) |
 | LLM ilk token | ≤ 250 ms | Yerleşik model + KV prefix cache |
-| TTS ilk ses | ≤ 150 ms | Chatterbox/Piper, ilk cümlede. **Trendyol-TTS (`voxcpm`) canlı için uygun değil** (RTF ~3, ~5,6 GB VRAM) — çevrimdışı/yüksek kalite |
+| TTS ilk ses | ≤ 150 ms | **Piper (CPU, ölçülen ~0,3–0,5 sn)**; Chatterbox/Piper, ilk cümlede. **Trendyol-TTS (`voxcpm`) canlı için uygun değil** (RTF ~3, ~5,6 GB VRAM) — çevrimdışı/yüksek kalite |
 
-> **Ölçüldü (2026-10-18, akışlı hat):** LLM+TTS'te **ilk ses 7,05–7,60 sn** (toplu akışta **18,8 sn**
-> = tur sonu; düşünme açıkken 9,52 sn). Uçtan uca (ASR turbo CPU 9,91 sn + akışlı) ilk ses **13,4 sn**.
-> Hedefin hâlâ çok üstünde: asıl darboğazlar **STT (~10 sn)** ve Chatterbox RTF ~1,2.
-> Ayrıntı: [`docs/akishli-hat.md`](docs/akishli-hat.md) §5.
+> **Ölçüldü (2026-10-18, akışlı hat):** Chatterbox ile LLM+TTS ilk ses **7,05–7,60 sn** (toplu akışta
+> 18,8 sn; düşünme açıkken 9,52 sn). **Piper (CPU) ile ilk ses 0,77–0,90 sn** — hedefin (<1 sn) içinde;
+> Piper RTF 0,19, geri-çevirim WER 0,000. Uçtan uca (ASR turbo CPU ~9,9 sn + akışlı Piper) **~11,7 sn**.
+> **Kalan tek darboğaz STT (~10 sn = uçtan uca sürenin ~%85'i)**; whisper her istekte 30 sn penceresini
+> encode ettiği için kısa seste sabit maliyet. Ayrıntı: [`docs/akishli-hat.md`](docs/akishli-hat.md) §5.1/§5.2.
 
 ## 6. Kritik tuzaklar
 
@@ -152,6 +160,12 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
     (akışlı hatta üretilen 3 WAV "kayıp" göründü, 2026-10-18). Çözüm: **`Get-Content -Raw -Encoding UTF8`**.
     Ayrıca native aracın JSON'unu **stdout'tan boruyla** almak yerine `--out`/`--json-out` ile
     **dosyaya** yazdır (ASR yolu artık böyle) — tuzak #14 ile aynı sınıf hata.
+16. **Bazı ikililer non-ASCII yolu hiç okuyamaz (mutlak yolla çöker).** Non-ASCII repo yolunda:
+    **Piper**'ın espeak-ng katmanı `Illegal byte sequence`, onnxruntime `0xC0000409 (fast-fail)`;
+    **`whisper-cli.exe`** non-ASCII **mutlak** `-m`/`-f` yoluyla `0xC0000409` ile çöküyor (aynı makinede
+    **göreli** yolla sorunsuz — `cwd` + göreli yol kullan). Çözüm: Piper'ı ve ses dosyasını
+    **ASCII dizine** kur (`scripts/piper-kur.ps1` → `%LOCALAPPDATA%\aybars\piper`); whisper-cli'yi
+    **göreli yolla** çağır. (Tuzak #12'nin genellemesi.)
 
 ## 7. Değişiklik kontrol listesi
 
@@ -167,6 +181,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 
 | Tarih | Değişiklik | Dosyalar |
 |---|---|---|
+| 2026-10-18 | **TTS darboğazı çözüldü: Piper (CPU) akışlı hatta bağlandı.** `tts-tools.py --serve --backend piper` + `scripts/tts-server.ps1 -Backend piper` + `scripts/piper-kur.ps1` (ASCII dizine kurulum). **Ölçüm (aynı oturum, aynı istem):** ilk ses **Chatterbox 4,2–7,6 sn → Piper 0,77–0,90 sn** (hedefin <1 sn içinde); Piper `tr_TR-dfki-medium` **RTF 0,19**, geri-çevirim **WER 0,000** (5/5). Uçtan uca (ASR turbo ~9,9 sn + Piper) **~11,7 sn** → kalan tek darboğaz **ASR (%85)**. Piper CPU'da çalışır (ilke #1: GPU tümüyle LLM'e), guard retry üretmez. **Yeni tuzak #16:** Piper/onnxruntime ve `whisper-cli` non-ASCII yolda çöker (`Illegal byte sequence` / `0xC0000409`) → Piper ASCII dizinde, whisper-cli göreli yolla. **54 test** (+2: piper sunucu yolu). | agent/tts-tools.py, scripts/tts-server.ps1, scripts/piper-kur.ps1, tests/test_tts_tools.py, docs/akishli-hat.md, docs/tts-kiyaslama.md, DURUM.md, AGENTS.md, README.md |
 | 2026-10-18 | **Akışlı hat eklendi (ilke #7 kodda).** `agent/llm-stream.py`: `llama-server` **SSE** → kademeli cümle bölme → cümle başına TTS → **arka planda** çalma (oynatma thread'i; `reasoning_content` yok sayılır, sembol-only atlanır) + `agent/pipeline-stream.ps1` (ASR sarmalayıcısı). **Ölçüm (LLM+TTS): ilk ses 18,8 sn → 7,05–7,60 sn (~2,5×)**; düşünme açıkken 9,52 sn; uçtan uca (ASR turbo CPU 9,91 sn) 13,4 sn. **Bulgular:** kısa cümlede guard retry ilk sesi 13–18 sn'ye çıkarıyor — uç enerjisi analizi kuyruğun **fazladan konuşma** olduğunu gösterdi (uç kırpma çözmez). Ölçüm sırasında iki gerçek `ConnectionResetError` **şeffaf telafi** edildi. **Kritik düzeltme:** PS 5.1 `Get-Content -Raw` BOM'suz UTF-8'i ANSI okuyordu → akışlı WAV'lar "kayıp" (tuzak #15); ASR yolu `--out` + UTF-8'e alındı; TTS sunucu çağrısı **2 deneme** (yerel yedeğe düşüp OOM olmak yerine dürüst hata). **52 test.** | agent/llm-stream.py, agent/pipeline-stream.ps1, agent/pipeline.ps1, tests/test_llm_stream.py, docs/akishli-hat.md, docs/kararlar.md, DURUM.md, AGENTS.md |
 | 2026-10-17 | **Guard incelemesi: `out` yolu bug'ı bulundu ve düzeltildi.** Retry kazandığında `synth_chatterbox` silinmiş `.retry.wav` yolunu döndürüyordu; `pipeline.ps1` bu alanı `Test-Path` ile kullandığı için **düzeltilen cümle sessizce çalınamıyordu** (24 üretimlik ölçümde 6 kayıt). `out` artık gerçek dosya (eski yol `retry_out`), pipeline'a dosya adına düşen savunma, ölçüm için `guard_extra_seconds` eklendi. Regresyon ağı: fix'siz **3 test düşüyor**, fix'le **39 test**. | agent/tts-tools.py, agent/pipeline.ps1, tests/test_tts_tools.py, docs/tts-kiyaslama.md, DURUM.md |
 | 2026-10-17 | **TTS uzun-kuyruk (halüsinasyon) guard'ı eklendi.** İnceleme sonucu: "boşları göndermeme" filtreleri **çökmeyi** engelliyordu (`IndexError: max()` / CUDA `device-side assert`); taşan sesi kesen ise Chatterbox'ın kendi `alignment_stream_analyzer`'ı (`forcing EOS, long_tail=True`) — **iki ayrı mekanizma** (karar #21). Guard: `audio_guard_limit = max(3×beklenen, beklenen+2 sn)` (beklenen ≈ harf/14) aşılırsa cümleyi **1 kez** daha üret, **kısa olanı** tut (`--no-guard` kapatır). **GPU ölçümü (24 üretim, 4 seed): 7 tetiklenme (%29), en uzun yakalanan kuyruk 6,04 sn, 0 hata**; uzun cümlede hiç tetiklenmedi; kalıcı sunucu yolu doğrulandı. Boş/emoji-only girdi `ensure_speakable` ile modele **hiç gitmiyor** (parti düşmez). **38 test**. | agent/tts-tools.py, tests/test_tts_tools.py, docs/tts-kiyaslama.md, docs/kararlar.md, DURUM.md, AGENTS.md |

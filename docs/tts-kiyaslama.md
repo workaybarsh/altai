@@ -78,7 +78,15 @@ Sesli asistan tipik olarak **kısa** yanıt üretir (0–50 karakter). Paper'ın
 |---|---|---|---|
 | **Trendyol-TTS** (=VoxCPM2 + TR LoRA) | ~5,3–5,6 GB | ~3,0 (gerçek zamandan ~3× yavaş) | ~0,08 (temiz örnek) |
 | Chatterbox | **~3,3 GB** (ölçüm) | **RTF ~1,1** (ölçüm) | ✅ iyi (tr-fix+respell ile) |
+| **Piper** (`tr_TR-dfki-medium`) | **0 GB (CPU)** | **RTF 0,19** (ölçüm) | **✅ WER 0,000** (5/5 birebir) |
 | SAPI | 0 (CPU) | çok hızlı | ❌ bu makinede **Türkçe ses yok** (yalnız Zira en-US) |
+
+> **Ölçüldü (2026-10-18):** Piper `tr_TR-dfki-medium` — 5 cümle, **RTF 0,19** (sentez 2,40 sn /
+> ses 12,52 sn); whisper turbo ile geri-çevirim **WER 0,000** (diakritikler doğru). Akışlı hatta
+> ilk ses **0,77–0,90 sn** (Chatterbox 4,2–7,6 sn; guard retry ile 30 sn). Piper **CPU'da** çalışır →
+> GPU'yu tümüyle LLM'e bırakır (ilke #1) ve guard retry üretmez. Ayrıntı: `docs/akishli-hat.md` §5.2.
+> ⚠️ Kurulum: piper + ses dosyası **ASCII** dizinde olmalı (`scripts/piper-kur.ps1`), aksi hâlde
+> espeak-ng `Illegal byte sequence` / onnxruntime `0xC0000409` ile düşer.
 
 ## 6. Sonuç ve projeye etkisi
 
