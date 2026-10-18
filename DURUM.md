@@ -97,7 +97,15 @@ Repo: `github.com/workaybarsh/aybars_says`
    - ⚠️ **Kalan tek darboğaz ASR** (~10 sn; uçtan uca sürenin ~%85'i). whisper turbo her istekte
      **30 sn penceresini** encode ediyor → kısa seste sabit maliyet; `-ac` reddedildi (tekrar döngüsü).
    - **Sıradaki karar:** ASR'de `small`/`medium` (hız↔doğruluk takası) **veya** whisper'ı GPU'ya al
-     (mimari kural değişir) **veya** VAD/akışlı ASR ile gizle (turbo CPU'da RTF>1 → zor).
+     **veya** VAD/akışlı ASR ile gizle (turbo CPU'da RTF>1 → zor).
+   - ⏸️ **Tüm bileşenleri GPU'ya alma (VRAM dağılımı) → 8 GB VRAM'li PROFiLDE değerlendirilecek**
+     (kullanıcı notu 2026-10-18: "onu 8 GB VRAM'li PC'de düşünürüz"). Bu makinede (profil B, 16 GB)
+     STT/TTS **CPU'da** kalır (ilke #1). GPU'ya taşınacaksa tespit edilen engeller: bu whisper
+     derlemesinde **`ggml-cuda.dll` yok** (CUDA build gerekir; **RTX 5060 Ti = sm_120** → CUDA ≥12.8
+     şart, resmi `whisper-cublas-12.4` ön-derlemesi yetmez); Piper **CPU-only** (onnxruntime-gpu
+     gerekir); Chatterbox GPU **~3,3 GB** ve **RTF ~1,2** (yavaş → ilk sesi geri bozar).
+     Kaba bütçe: LLM 6,6 + whisper 0,6–1,6 + Chatterbox 3,3 ≈ **10,5–11,5 GB** → 16 GB'a sığar,
+     **8 GB'a sığmaz** (profil A'da öncelik ASR mi TTS mi sorusu).
    - ⬜ **Karar bekliyor:** Piper canlı hattın **varsayılan TTS'i** olsun mu? (ölçüm hazır, onay bekliyor;
      Piper CPU'da çalıştığı için GPU'yu tümüyle LLM'e bırakır — mimari ilke #1).
    - ⬜ **Açık iş (yalnız Chatterbox kalırsa):** kısa cümlede guard retry'ı sınırlamak (ör. <20 harfte
