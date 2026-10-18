@@ -89,6 +89,7 @@ Repo: `github.com/workaybarsh/aybars_says`
   retry **23,2 sn → 5,0 sn**. Kapatma: `--chatterbox-no-softg` (sunucuda istek başına `{"softg": false}`).
   ⚠️ `ğ`'den bağımsız kalan TR kusurları: `yerel`→"gereğe", `için`→"işin", `Aybars`→"haybars/aybaş"
   (yamayla çözülmez). Ayrıntı: [`docs/tts-kiyaslama.md`](docs/tts-kiyaslama.md) §9.4;
+  **kulak testi ✅ (2026-10-18): kullanıcı "yeni olan güzel" dedi → yama kabul edildi (karar #23)**;
   dinleme seti (masaüstü) `aybars-tts-test\`; ölçüm dosyaları `logs/softg-bench/`.
 - Testler: `python -m pytest -q` → **59 test** geçiyor
 
@@ -120,9 +121,10 @@ Repo: `github.com/workaybarsh/aybars_says`
      **8 GB'a sığmaz** (profil A'da öncelik ASR mi TTS mi sorusu).
    - ⬜ **Karar bekliyor:** Piper canlı hattın **varsayılan TTS'i** olsun mu? (ölçüm hazır, onay bekliyor;
      Piper CPU'da çalıştığı için GPU'yu tümüyle LLM'e bırakır — mimari ilke #1).
-   - ⬜ **Karar bekliyor (Chatterbox TR):** `ğ` yaması doğrulandı (§9.4) ama `yerel`/`için`/`Aybars` tipi
-     hatalar kalıyor → her kelime için istisna sözlüğü **veya** TR TTS değişimi (Piper/XTTS/CosyVoice2).
-     Kullanıcı Piper'ı **doğallık** yönünden reddetti (WER 0,000 ama robotik) → karar kulağa ait.
+   - ✅ **`ğ` yaması KULAK TESTİYLE KABUL EDİLDİ (2026-10-18, karar #23):** kullanıcı "yeni olan güzel"
+     dedi → `--lang tr`'de varsayılan açık. ⬜ **Kalan iş:** `yerel`/`için`/`Aybars` tipi hatalar
+     (§9.4) → **kelime-istisna sözlüğü** (ASR denetimiyle) **veya** TR TTS değişimi. Kullanıcı Piper'ı
+     **doğallık** yönünden reddetti (WER 0,000 ama robotik) → Chatterbox TR kırılganlığı hâlâ açık konu.
    - ⬜ **Açık iş (yalnız Chatterbox kalırsa):** kısa cümlede guard retry'ı sınırlamak (ör. <20 harfte
      retry yok / sınır tabanı) veya kısa ünlemler için hazır ses.
 1. **Türkçe TTS:** Trendyol-TTS ağır (VRAM ~5,6 GB, RTF ~3) → çevrimdışı. Canlı TR adayları

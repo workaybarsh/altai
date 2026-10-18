@@ -312,8 +312,9 @@ telaffuz**) · `ağaç`→"ayaç" ✅ (ğ = y kayması) · `değil`/`dağ`/`yağ
 → Yama **`ğ` sınıfını kapatır**; ama Chatterbox'ın TR telaffuzu hâlâ **kırılgan** (yerel/için/Aybars tipi
 hatalar yamayla çözülmez). Bu, §6 ve §9'un "TR için makine değil ön-işleme" tezinin sınırıdır: her kelime
 için sözlük/istisna gerekir. Ölçüm dosyaları: `logs/softg-bench/` (üretici `logs/softg-bench.py`,
-doğrulayıcı `logs/softg-asr.py`), dinleme seti: masaüstü `aybars-tts-test\` (**b** varyantı **a**'dan iyi mi
-— karar kulağa ait).
+doğrulayıcı `logs/softg-asr.py`), dinleme seti: masaüstü `aybars-tts-test\`.
+**KULAK TESTİ ✅ (2026-10-18):** kullanıcı b varyantı için **"yeni olan güzel"** dedi → `ğ` yaması
+kabul edildi (karar #23), `--lang tr`'de varsayılan açık.
 
 ## 10. Pipeline TTS çalıştırma modları (2026-10-17)
 
