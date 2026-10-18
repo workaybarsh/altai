@@ -80,7 +80,7 @@ tüketicileri var. Burada **tek sahipli** bir hat kurulur.
 | LLM | **Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** (imatrix), **MTP daima açık**, GPU'da yerleşik |
 | TTS | Takas edilebilir: Chatterbox v3 (EN) / Trendyol-TTS `voxcpm` (TR, ağır → çevrimdışı) / Piper (hızlı) / SAPI |
 | Dil | Türkçe + İngilizce (iki sürüm) |
-| Kullanım | Kişisel / kapalı |
+| Kullanım | Kişisel / açık kaynak (**MIT**) |
 | Hedef gecikme | < 1 sn |
 
 Tüm kararlar: [`docs/kararlar.md`](docs/kararlar.md).
@@ -132,4 +132,6 @@ orada ölçülür (`large-v3-turbo` yeterli mi, `medium`/`small`'a mı inilmeli)
 
 ## Lisans
 
-Kişisel kullanım. (whisper.cpp MIT; LLM Llama/Qwen türevi; Chatterbox MIT; Trendyol-TTS/VoxCPM2 MIT.)
+Bu proje **MIT** lisansıyla yayımlanır — bkz. [`LICENSE`](LICENSE) (karar #24). Üçüncü taraf bileşenler
+kendi lisanslarını korur: whisper.cpp MIT; LLM Llama/Qwen türevi; Chatterbox MIT; Trendyol-TTS/VoxCPM2 MIT;
+Piper GPL-3.0 (yalnızca ayrı araç olarak çağrılır).
