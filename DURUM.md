@@ -134,12 +134,23 @@ Repo: `github.com/workaybarsh/aybars_says`
 4. **LLM bağlamı/prefix cache** ve sohbet döngüsü (arayüz) henüz yok.
 
 ## Ortam notları
+- ⚠️ **BÜYÜK TEMİZLİK (2026-10-18) — disk verileri silindi, KAYNAK KOD DURUYOR.** Kullanıcı kararıyla
+  ("sonra tekrar üzerinde çalışırsak yükleriz") silindi (**15,6 GB** kazanıldı; C: 154,5 → 170,2 GB):
+  `models\` (9B i1-Q5_K_M GGUF **6,5 GB** + `ggml-large-v3-turbo-q5_0.bin` 0,5 GB) · `tts-venv` (**5,4 GB**) ·
+  `%LOCALAPPDATA%\aybars` (piper 0,1 GB) · HF `models--ResembleAI--chatterbox` (**3,0 GB**) · `logs\`
+  (ölçüm artefaktları + dev betikleri: `asr-diff.py`, `softg-bench.py`, `softg-asr.py`, `dinle-kit.py`,
+  `check-grapheme.py`, `bench-piper.py`…). **Kalan:** `tools\` (whisper + llama ikilileri, 780 MB).
+  **Geri kurulum:** (1) `tts-venv` → `pip install` (aşağıdaki liste: torch 2.11+cu128, chatterbox-tts,
+  soundfile); (2) `scripts\piper-kur.ps1`; (3) HF chatterbox ilk çalıştırmada **otomatik** iner;
+  (4) `models\` → HF `mradermacher/Huihui-Qwen3.5-9B-abliterated-i1-GGUF` + **`mtp_inject.py` ile MTP
+  enjeksiyonu (zorunlu)**, whisper turbo `whisper-quantize` ile q5_0. Aşağıdaki "Modeller"/"TTS venv"/
+  "Örnek sesler" satırları **o günkü durumu** anlatır (artık diskte değil).
 - **PowerShell 7 (2026-10-17):** `winget install Microsoft.PowerShell` → **7.6.7**;
   `pwsh` = `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe` (PATH'te). Öncesinde yalnız 5.1 vardı.
   `pipeline.ps1`/betikler ASCII tutulduğu için 5.1'de de çalışır.
 - **Araçlar:** `tools\whisper\Release\whisper-cli.exe` (+ `whisper-server.exe`, `whisper-quantize.exe`,
   `whisper-bench.exe`), `tools\llama\llama-server.exe` (b11669, CUDA 13.4).
-- **Modeller** (`models\`): **`ggml-large-v3-turbo-q5_0.bin` (547 MB, varsayılan ASR)** ve
+- **Modeller** (`models\`): ⚠️ **2026-10-18'de silindi** (bkz. BÜYÜK TEMİZLİK). O gün: **`ggml-large-v3-turbo-q5_0.bin` (547 MB, varsayılan ASR)** ve
   `Huihui-...i1-Q5_K_M.gguf` (6,7 GB, **MTP enjekte edildi**).
   *(2026-10-17 disk temizliği: turbo **f16**, base/small/medium (+q5_0) ve HF'deki **Trendyol-TTS**
   ile whisper-v3-turbo cache'leri silindi — **~15 GB** kazanıldı. Gerekirse HF/`whisper-quantize` ile
@@ -169,10 +180,11 @@ Repo: `github.com/workaybarsh/aybars_says`
   argümanı verilirse karakter bozuluyor (whisper-server yanlış yolu açıp çöküyor) → **göreli yol +
   `-WorkingDirectory`** kullan (bkz. `scripts/whisper-server.ps1`).
 - **Whisper ikilisi** PATH'te değil → `asr-tools.py --whisper tools\whisper\Release\whisper-cli.exe`.
-- **TTS venv:** `%USERPROFILE%\tts-venv` — `torch 2.11.0+cu128` (sm_120), `chatterbox-tts 0.1.7`,
+- **TTS venv:** `%USERPROFILE%\tts-venv` ⚠️ **2026-10-18'de silindi** (BÜYÜK TEMİZLİK). O gün:
+  `torch 2.11.0+cu128` (sm_120), `chatterbox-tts 0.1.7`,
   `voxcpm 2.0.3`, `soundfile`. HF modelleri sağlam.
-- **Örnek sesler:** `logs\tts\tr-ornek.wav`, `logs\tts\en-ornek.wav`, `logs\tts\trendyol-tr*.wav`;
-  ASR ölçümü için `logs\asr-tmp\chatterbox-tr-final.16k.wav` (5,6 sn TR).
+- **Örnek sesler (⚠️ `logs\` 2026-10-18'de silindi):** `logs\tts\tr-ornek.wav`, `logs\tts\en-ornek.wav`,
+  `logs\tts\trendyol-tr*.wav`; ASR ölçümü için `logs\asr-tmp\chatterbox-tr-final.16k.wav` (5,6 sn TR).
 - Proje **native Windows** hedefler; Fish/WSL yalnızca deneme amaçlı
 - **Çalışma kuralı:** ağır GPU işi (model yükleme / GPU'da çıkarım) çalıştırmadan **önce kullanıcıya sor**
 - **İki donanım profili:** A (8 GB VRAM/16 GB RAM) ve B (16 GB VRAM/32 GB RAM) → [`docs/mimari.md`](docs/mimari.md) §7.1.
