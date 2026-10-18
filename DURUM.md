@@ -79,7 +79,18 @@ Repo: `github.com/workaybarsh/aybars_says`
   Ayrıntı: [`docs/akishli-hat.md`](docs/akishli-hat.md) §5.2, [`docs/tts-kiyaslama.md`](docs/tts-kiyaslama.md) §5.
   ⚠️ Piper (espeak-ng/onnxruntime) **non-ASCII yolu okuyamıyor** → ikili ve ses dosyası ASCII dizinde
   olmalı; aynı sınır `whisper-cli.exe`'de de var (non-ASCII **mutlak** yolda `0xC0000409`).
-- Testler: `python -m pytest -q` → **54 test** geçiyor
+- **Chatterbox `ğ` düzeltmesi (2026-10-18):** kullanıcının kulak şikâyeti (`çalıştığı` → "çalıştı ki")
+  **geri-çevirimle doğrulandı** ("Tam yerel çalıştığı için…" → "Tam yarar çalıştı ki işin…"). Kök neden:
+  grapheme sözlükte (`grapheme_mtl_merged_expanded_v1.json`) **`ğ` var**, NFKD ayrığı yok → sorun
+  **akustik modelde**, tokenizer'da değil. `tr_softg()` eklendi (`ğ`: iki ünlü arası → `y`, ünlüden
+  sonra ünsüz/sonda → önceki ünlü: `dağ`→`daa`), `ş→sh`'den **önce** uygulanır.
+  **A/B (Chatterbox, seed 42, aynı metinler, geri-çevirim):** `çalıştığı` **düzeldi** ✅ (eski yama
+  "çalış dışı", yamasız "çalıtıcı"); 9 kelimelik listede kelime-doğru **%44 → %67**; 1. cümlede guard
+  retry **23,2 sn → 5,0 sn**. Kapatma: `--chatterbox-no-softg` (sunucuda istek başına `{"softg": false}`).
+  ⚠️ `ğ`'den bağımsız kalan TR kusurları: `yerel`→"gereğe", `için`→"işin", `Aybars`→"haybars/aybaş"
+  (yamayla çözülmez). Ayrıntı: [`docs/tts-kiyaslama.md`](docs/tts-kiyaslama.md) §9.4;
+  dinleme seti (masaüstü) `aybars-tts-test\`; ölçüm dosyaları `logs/softg-bench/`.
+- Testler: `python -m pytest -q` → **59 test** geçiyor
 
 ## Önemli kararlar (özet)
 - **LLM:** Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M **+ MTP zorunlu** (kararlar #12, #13)
@@ -87,7 +98,8 @@ Repo: `github.com/workaybarsh/aybars_says`
   canlı hat için **kalıcı `whisper-server`**
 - **TTS:** İngilizce **Chatterbox** (MIT). TR: **Piper** (`tr_TR-dfki-medium`, **CPU**, RTF 0,19,
   WER 0,000, ilk ses ~0,8 sn) — **canlı için en hızlı aday** (varsayılan kararı onay bekliyor);
-  **Chatterbox (tr-fix+respell)** doğallık için (~3,3 GB GPU, RTF ~1,2); **Trendyol-TTS** çevrimdışı
+  **Chatterbox (tr-fix+respell+`ğ` yaması)** doğallık için (~3,3 GB GPU, RTF ~1,2) ama TR telaffuzu
+  **kırılgan** (`yerel`/`için`/`Aybars` hâlâ bozuk → §9.4); **Trendyol-TTS** çevrimdışı
   (~5,6 GB, RTF ~3). (kararlar #16/#18; Piper ölçümü `docs/akishli-hat.md` §5.2)
 
 ## Açık işler / sıradaki adımlar
@@ -108,6 +120,9 @@ Repo: `github.com/workaybarsh/aybars_says`
      **8 GB'a sığmaz** (profil A'da öncelik ASR mi TTS mi sorusu).
    - ⬜ **Karar bekliyor:** Piper canlı hattın **varsayılan TTS'i** olsun mu? (ölçüm hazır, onay bekliyor;
      Piper CPU'da çalıştığı için GPU'yu tümüyle LLM'e bırakır — mimari ilke #1).
+   - ⬜ **Karar bekliyor (Chatterbox TR):** `ğ` yaması doğrulandı (§9.4) ama `yerel`/`için`/`Aybars` tipi
+     hatalar kalıyor → her kelime için istisna sözlüğü **veya** TR TTS değişimi (Piper/XTTS/CosyVoice2).
+     Kullanıcı Piper'ı **doğallık** yönünden reddetti (WER 0,000 ama robotik) → karar kulağa ait.
    - ⬜ **Açık iş (yalnız Chatterbox kalırsa):** kısa cümlede guard retry'ı sınırlamak (ör. <20 harfte
      retry yok / sınır tabanı) veya kısa ünlemler için hazır ses.
 1. **Türkçe TTS:** Trendyol-TTS ağır (VRAM ~5,6 GB, RTF ~3) → çevrimdışı. Canlı TR adayları

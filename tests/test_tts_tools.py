@@ -66,6 +66,39 @@ def test_tr_respell_maps_s_to_sh():
     assert tts.tr_respell("Çalışan şair, şaşkın şarkı") == "Çalıshan shair, shashkın sharkı"
 
 
+def test_tr_softg_turkish_rules():
+    # iki unlu arasi -> 'y'
+    assert tts.tr_softg("değil") == "deyil"
+    assert tts.tr_softg("ağaç") == "ayaç"
+    assert tts.tr_softg("kağıt") == "kayıt"
+    # unluden sonra onsoz/son -> onceki unlu uzatilir (Turkce'de ğ hep unluden sonra gelir)
+    assert tts.tr_softg("dağ") == "daa"
+    assert tts.tr_softg("yağmur") == "yaamur"
+    assert tts.tr_softg("öğretmen") == "ööretmen"
+    assert tts.tr_softg("mağdur") == "maadur"
+    assert tts.tr_softg("iğne") == "iine"
+    # onsozden sonra (nadir/odunc) -> 'g'
+    assert tts.tr_softg("xğx") == "xgx"
+
+
+def test_tr_softg_leaves_other_text_alone():
+    assert tts.tr_softg("merhaba dünya") == "merhaba dünya"
+    assert tts.tr_respell("Harika Aybars!") == "Harika Aybars!"
+
+
+def test_tr_respell_fixes_the_broken_sentence():
+    # Kulakla sikayet edilen ornek: 'çalıştığı' -> 'çalıştı ki' cikiyordu.
+    src = "Tam yerel çalıştığı için cevaplarım hem hızlı hem de gizli."
+    assert tts.tr_respell(src) == "Tam yerel çalıshtıyı için cevaplarım hem hızlı hem de gizli."
+
+
+def test_tr_respell_softg_can_be_disabled():
+    """A/B ve geri donus: softg=False -> eski davranis ('ş'->'sh' kalir, 'ğ' dokunulmaz)."""
+    out = tts.tr_respell("değil dağ çalıştığı", softg=False)
+    assert out == "değil dağ çalı" + "sh" + "tığı"   # 'ş' -> s+h, 'ğ' dokunulmaz
+    assert tts.tr_respell("değil dağ", softg=True) == "deyil daa"
+
+
 def test_install_tr_tokenizer_fix_keeps_precomposed():
     import unicodedata
 
@@ -432,3 +465,45 @@ def test_tts_server_piper_missing_model_raises(tmp_path):
     srv = tts.create_server(args)
     with pytest.raises(RuntimeError):
         srv.ensure_model()
+
+
+def test_tts_server_passes_respell_switches_per_request(monkeypatch, tmp_path):
+    """Istek basina A/B kablolamasi: 'softg'/'tr_raw' synth_chatterbox'a dogru gecer.
+
+    {'softg': false} -> yalniz 'ğ' respell kapali (respell=True, softg=False)
+    {'tr_raw': true} -> tum TR duzeltmeleri kapali (respell=False)
+    """
+    import threading
+    import types
+
+    monkeypatch.setattr(tts, "load_chatterbox", lambda **kw: object())
+    seen = []
+
+    def fake_synth(text, out_wav, *a, **k):
+        seen.append({"text": text, "tr_fix": a[7], "respell": a[8], "softg": k.get("softg")})
+        os.makedirs(os.path.dirname(os.path.abspath(out_wav)), exist_ok=True)
+        with open(out_wav, "wb") as f:
+            f.write(b"RIFF")
+        return {"out": out_wav, "audio_seconds": 1.0, "tts_seconds": 0.1, "text": text}
+
+    monkeypatch.setattr(tts, "synth_chatterbox", fake_synth)
+
+    args = types.SimpleNamespace(backend="chatterbox", lang="tr", device="cpu", t3_model="v3",
+                                 exaggeration=0.5, cfg=0.5, seed=None, chatterbox_tr_raw=False,
+                                 chatterbox_no_softg=False, no_guard=True,
+                                 voice_prompt=None, host="127.0.0.1", port=0)
+    srv = tts.create_server(args)
+    srv.ensure_model()
+    port = srv.server_address[1]
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        for extra in ({"softg": False}, {"tr_raw": True}, {}):
+            body = dict({"texts": ["değil"], "out_dir": str(tmp_path), "prefix": "r_"}, **extra)
+            _post_json(f"http://127.0.0.1:{port}/tts", json.dumps(body).encode())
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+    assert seen[0]["softg"] is False and seen[0]["respell"] is True    # yalniz 'ğ' kapali
+    assert seen[1]["respell"] is False and seen[1]["tr_fix"] is False  # tr_raw: hepsi kapali
+    assert seen[2]["softg"] is True and seen[2]["respell"] is True     # varsayilan: hepsi acik

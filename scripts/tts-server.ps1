@@ -23,6 +23,9 @@ param(
     [string]$PiperModel = '',
     [string]$Bind = '127.0.0.1',
     [int]$Port = 8082,
+    [int]$Seed = -1,
+    [switch]$NoSoftg,
+    [switch]$TrRaw,
     [string]$LogDir = 'logs',
     [int]$TimeoutSec = 180,
     [switch]$Stop
@@ -61,6 +64,9 @@ $errLog = Join-Path $logRoot 'tts-server.err.log'
 $args = @('agent\tts-tools.py', '--serve', '--backend', $Backend, '--lang', $Lang,
           '--device', $Device, '--t3-model', $T3Model, '--host', $Bind, '--port', $Port)
 if ($VoicePrompt) { $args += @('--voice-prompt', $VoicePrompt) }
+if ($Seed -ge 0) { $args += @('--seed', "$Seed") }
+if ($NoSoftg) { $args += @('--chatterbox-no-softg') }
+if ($TrRaw) { $args += @('--chatterbox-tr-raw') }
 
 # piper: ONEMLI - ikili ve ses dosyasi ASCII yolda olmali (espeak-ng/onnxruntime non-ASCII
 # yolda coker). Varsayilan: %LOCALAPPDATA%\aybars\piper (ASCII).

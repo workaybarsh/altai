@@ -71,7 +71,10 @@ Planlama sırasında masaya gelip vazgeçilen seçenekler (kayıt için; en yeni
   Türkçe WER ölçüp karar ver.
 - [x] TTS birincil = **Chatterbox Multilingual v3** (EN). TR = **Trendyol-TTS** çevrimdışı/yüksek-kalite motoru (`tts-tools.py --backend voxcpm`); Fish S2 Pro yalnızca izole WSL denemesi. *(Kararlar #14, #15, #16.)*
 - [ ] **Canlı TR TTS** hâlâ açık: Piper (CPU, hızlı ama robotik) mi, yoksa GPU'ya alınan yüksek-kalite motor (LLM'i küçültür/boşaltır) mu? "İki mod" öneriliyor. Trendyol-TTS canlı için elendi (RTF ~3, ~5,6 GB VRAM)
-- [ ] **Chatterbox TR ön-normalizasyon (G2P-lite) denemesi:** diakritikleri doğru okutacak metin dönüşümü + CER/WER ölçümü (#18). Başarılıysa TR için en hafif/hızlı yol
+- [x] **Chatterbox TR ön-normalizasyon (respell) yazıldı ve ölçüldü (2026-10-18):** `ş→sh` + **`ğ`**
+  (`tr_softg()`: iki ünlü arası → `y`, ünlüden sonra → uzun ünlü). `çalıştığı` **düzeldi**; 9 kelimede
+  kelime-doğru **%44 → %67**. ⚠️ Ama `yerel`/`için`/`Aybars` tipi hatalar **kalıyor** → respell yolu
+  her kelime için sözlük/istisna gerektirir; **Chatterbox TR kırılgan** (`tts-kiyaslama.md` §9.4, #18)
 - [ ] **VoxCPM RTF'i yeniden ölç:** `inference_timesteps=10` + `torch.compile`/Triton'un Windows'ta çalıştığını doğrula (resmî ~0,3 vs bizim ~3)
 - [ ] **Canlı TR adayları:** bağımsız kanıta göre (arXiv:2610.06057) **CosyVoice** (doğallık + uzunluk-dayanıklı) öncelikli, ardından **OmniVoice(ZS)** (anlaşılırlık). İkisinin de **RTF + VRAM**'i ölçülmeli. Ayrıntı: [`tts-kiyaslama.md`](tts-kiyaslama.md)
 - [ ] Akışlı ASR penceresi / VAD eşiği kesinleşmesi

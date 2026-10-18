@@ -104,12 +104,53 @@ def install_tr_tokenizer_fix(tokenizer):
     return tokenizer
 
 
-def tr_respell(s: str) -> str:
-    """Chatterbox TR icin fonetik ipucu: 'ş' -> 'sh'.
+_TR_VOWELS = "aeıioöuü"
 
-    Modelin Turkce 'ş' (//ʃ//) sesini yanlis uretmesini (ör. 'çalışan' -> 'çalıyan')
-    telafi eder; 'sh' digrafi /ʃ/ olarak okunur. Kulak testiyle dogrulandi (2026-10-17).
+
+def tr_softg(s: str) -> str:
+    """'ğ' (yumusak g) icin telaffuz ipucu.
+
+    Kok neden (2026-10-18): Chatterbox grapheme sozlugunde 'ğ' VAR (U+011F), yani
+    tokenizer taniyor; ama akustik model onu yanlis seslendiriyor -- 'çalıştığı' ->
+    kulakta 'çalıştı ki'. (Ayni sozlukte NFKD ile ayrilmis 'g'+breve YOK, bu yuzden
+    tr_fix'in NFKD'yi kapatmasi dogru.)
+
+    Turkce yumusak-g kurali yaziya cevrilir:
+      - iki unlu arasinda          -> 'y'      (değil -> deyil, çalıştığı -> çalıştıyı)
+      - unluden sonra, onsoz/sonda -> onceki unlu tekrarlanir (dağ -> daa, yağmur -> yaamur)
+      - onsozden sonra (nadir)     -> 'g'      (mağdur -> magdur)
     """
+    if "ğ" not in s and "Ğ" not in s:
+        return s
+    out = []
+    for i, ch in enumerate(s):
+        if ch in "ğĞ":
+            prev = s[i - 1] if i else ""
+            nxt = s[i + 1] if i + 1 < len(s) else ""
+            # dikkat: '' her string'in alt dizisidir -> bos tarafi ayrica ele
+            p_vow = bool(prev) and prev.lower() in _TR_VOWELS
+            n_vow = bool(nxt) and nxt.lower() in _TR_VOWELS
+            if p_vow and n_vow:
+                out.append("y")
+            elif p_vow:
+                out.append(prev.upper() if ch == "Ğ" else prev.lower())
+            else:
+                out.append("G" if ch == "Ğ" else "g")
+            continue
+        out.append(ch)
+    return "".join(out)
+
+
+def tr_respell(s: str, softg: bool = True) -> str:
+    """Chatterbox TR icin fonetik ipucu: 'ş' -> 'sh', 'ğ' -> tr_softg().
+
+    'ş' (//ʃ//) icin: model 'ş' sesini yanlis uretiyordu (ör. 'çalışan' -> 'çalıyan');
+    'sh' digrafi /ʃ/ olarak okunur. Kulak testiyle dogrulandi (2026-10-17).
+    'ğ' icin: tr_softg() (bkz. oradaki kok neden notu); `softg=False` ile kapatilir
+    (A/B ve geri donus icin -- CLI: --chatterbox-no-softg).
+    """
+    if softg:
+        s = tr_softg(s)
     return s.replace("ş", "sh").replace("Ş", "sh")
 
 
@@ -181,7 +222,7 @@ def load_chatterbox(lang=None, device="cuda", t3_model="v3"):
 
 def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
                      exaggeration=0.5, cfg=0.5, t3_model="v3", seed=None, tr_fix=True,
-                     respell=True, model=None, guard=True):
+                     respell=True, model=None, guard=True, softg=True):
     """Chatterbox ile tek cumle sentezler.
 
     `guard=True` (varsayilan): uretilen ses `audio_guard_limit` sinirini asarsa ayni metni
@@ -202,13 +243,13 @@ def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
 
-    # TR icin duzeltmeler OTOMATIK (lang='tr'): tokenizer NFKD yamasi + 'ş'->'sh' respell.
-    # (kapatmak icin tr_fix/respell = False; CLI: --chatterbox-tr-raw)
+    # TR icin duzeltmeler OTOMATIK (lang='tr'): tokenizer NFKD yamasi + 'ş'->'sh' + 'ğ' respell.
+    # (kapatmak icin tr_fix/respell = False; CLI: --chatterbox-tr-raw, 'ğ' icin --chatterbox-no-softg)
     if (lang or "").lower() == "tr":
         if tr_fix:
             install_tr_tokenizer_fix(model.tokenizer)
         if respell:
-            text = tr_respell(text)
+            text = tr_respell(text, softg=softg)
 
     kwargs = {}
     if voice_prompt:
@@ -453,6 +494,9 @@ def create_server(args):
             prefix = req.get("prefix") or "tts_"
             lang = req.get("lang", args.lang)
             voice_prompt = req.get("voice_prompt", args.voice_prompt)
+            # istek basina A/B: {"softg": false} -> 'ğ' respell kapali, {"tr_raw": true} -> tum TR duzeltmeleri kapali
+            tr_raw = bool(req["tr_raw"]) if "tr_raw" in req else bool(getattr(args, "chatterbox_tr_raw", False))
+            softg = bool(req["softg"]) if "softg" in req else not bool(getattr(args, "chatterbox_no_softg", False))
             try:
                 model = ensure_model()
                 os.makedirs(out_dir, exist_ok=True)
@@ -466,8 +510,9 @@ def create_server(args):
                         else:
                             r = synth_chatterbox(t, out_i, lang, voice_prompt, args.device,
                                                 args.exaggeration, args.cfg, args.t3_model, args.seed,
-                                                not args.chatterbox_tr_raw, not args.chatterbox_tr_raw,
-                                                model=model, guard=not getattr(args, "no_guard", False))
+                                                not tr_raw, not tr_raw,
+                                                model=model, guard=not getattr(args, "no_guard", False),
+                                                softg=softg)
                         r["ok"] = True
                     except Exception as exc:
                         r = {"ok": False, "out": out_i,
@@ -531,6 +576,8 @@ def main(argv=None) -> int:
     ap.add_argument("--t3-model", default="v3", help="chatterbox coklu dil checkpoint: v3 | v2")
     ap.add_argument("--chatterbox-tr-raw", action="store_true",
                     help="chatterbox TR duzeltmelerini KAPAT (tr_fix+respell); test/AB icin")
+    ap.add_argument("--chatterbox-no-softg", action="store_true",
+                    help="yalniz 'ğ' respell'ini KAPAT ('ş'->'sh' kalir); A/B ve geri donus icin")
     ap.add_argument("--no-guard", action="store_true",
                     help="uzun-kuyruk (halusinasyon) telafi retry'sini KAPAT")
     ap.add_argument("--seed", type=int, default=None)
@@ -584,7 +631,8 @@ def main(argv=None) -> int:
                     r = synth_chatterbox(line, out_i, args.lang, args.voice_prompt, args.device,
                                          args.exaggeration, args.cfg, args.t3_model, args.seed,
                                          not args.chatterbox_tr_raw, not args.chatterbox_tr_raw,
-                                         model=model, guard=not args.no_guard)
+                                         model=model, guard=not args.no_guard,
+                                         softg=not args.chatterbox_no_softg)
                     r["ok"] = True
                 except Exception as exc:  # tek cumle patlarsa toplu uretim devam eder
                     r = {"ok": False, "out": out_i,
@@ -621,7 +669,8 @@ def main(argv=None) -> int:
             res = synth_chatterbox(text, args.out, args.lang, args.voice_prompt, args.device,
                                    args.exaggeration, args.cfg, args.t3_model, args.seed,
                                    not args.chatterbox_tr_raw, not args.chatterbox_tr_raw,
-                                   guard=(not args.no_guard))
+                                   guard=(not args.no_guard),
+                                   softg=not args.chatterbox_no_softg)
         elif args.backend == "voxcpm":
             res = synth_voxcpm(text, args.out, args.voxcpm_model, args.voxcpm_cfg,
                                args.voxcpm_steps, args.device, not args.no_optimize)

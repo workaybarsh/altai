@@ -243,7 +243,7 @@ Kalan tek hata ("çalışan"→"çalıyan") için **respell** denendi: **`ş` �
 > Not: bazı üretimlerde model "forcing EOS" uyarısı verip bir kelimeyi bozabiliyor (üretim varyansı) →
 > şüpheli örnekte aynı cümle yeniden üretilir. **2026-10-17: bu artık kodda** — uzun-kuyruk guard'ı
 > (süre sınırı + 1 retry) [`§11`](#11-uzun-kuyruk-halüsinasyon-guardı-2026-10-17). Respell, "ş"yi
-> düzeltir; **ğ/ç için gerekirse** benzer ipuçları eklenebilir (henüz gerekmedi).
+> düzeltir; **ğ için 2026-10-18'de gerekti ve eklendi** → [`§9.4`](#94-ğ-için-respell-çözümü--ölçülmüş-doğrulama-2026-10-18).
 
 **Çözüm yolları (kolaydan ağıra):**
 
@@ -258,6 +258,62 @@ Kalan tek hata ("çalışan"→"çalıyan") için **respell** denendi: **`ş` �
 ön-işleme**. En ucuz (0,5B, ~2 GB, MIT) ve en hızlı (RTF <1) motor olduğu için, **Türkçe
 ön-normalizasyon (yol 2)** ile ciddi biçimde geri kazanılabilir. Ayrıca yukarıdaki benchmark'taki
 "kısa cümlede çökme" bulgusunun bir kısmı da bu diakritik/tokenizer hatasından kaynaklanıyor olabilir.
+
+### 9.4 "ğ" için respell çözümü + ölçülmüş doğrulama (2026-10-18)
+
+**Kullanıcı bulgusu (kulak):** `çalıştığı` kelimesi "çalıştı ki" gibi çıkıyordu, yani **`ğ` bozuktu**.
+**Objektif doğrulama:** sesi whisper turbo ile geri çevirip kaynak metinle karşılaştırdık:
+
+```
+kaynak : Tam yerel çalıştığı için cevaplarım hem hızlı hem de gizli.
+duyulan: Tam yarar  çalıştı ki işin cevaplarım hem hızlı hem de gizli.      (Chatterbox, eski yama)
+```
+
+**Kök neden (ölçüldü, GPU gerekmedi):** Chatterbox'ın grapheme sözlüğünde (`grapheme_mtl_merged_expanded_v1.json`,
+2.454 token) **`ğ` (U+011F) VAR**, ama NFKD ile ayrılmış hâli (`g`+breve) **yok** — ş/ü/ö/ç/ı için de öyle:
+
+| Harf | NFC (tam) | NFKD (ayrık) |
+|---|---|---|
+| ş, ğ, ü, ö, ç, ı, İ | ✅ var | ❌ yok |
+
+Yani `tr_fix`'in NFKD'yi kapatması **doğru**; tokenizer `ğ`'yi tanıyor — hatayı **akustik model**
+yapıyor. Çözüm, `ş→sh` yamasının kardeşi: **`ğ` için fonetik ipucu** (`tr_softg()`):
+
+```
+ğ  iki ünlü arasında          -> y       değil -> deyil, çalıştığı -> çalıştıyı
+ğ  ünlüden sonra, ünsüz/sonda -> önceki ünlü   dağ -> daa, yağmur -> yaamur, öğretmen -> ööretmen
+ğ  ünsüzden sonra (nadir)     -> g       (Türkçede ğ hep ünlüden sonra gelir; yalnız güvenlik ağı)
+```
+
+Uygulama sırası: `tr_softg()` → sonra `ş→sh`. Kapatma: `--chatterbox-no-softg` (sunucuda istek başına
+`{"softg": false}`), tamamen kapatma `--chatterbox-tr-raw`.
+
+**A/B ölçümü** (Chatterbox, `--seed 42`, aynı metinler, geri çevirim: whisper turbo CPU):
+
+| Vaka | a) ESKİ (yalnız `ş→sh`) | b) YENİ (`ş→sh` + `ğ`) | c) HAM (yama yok) |
+|---|---|---|---|
+| "Tam yerel **çalıştığı için**…" | "çalış dışı işin" ❌ | **"çalıştığı"** ✅ | "çalıtıcı işin" ❌ |
+| 9 kelimelik liste (kelime-doğru) | %44 | **%67** | %44 |
+| "Harika Aybars!" (kelime-doğru) | %50 | %50 | %50 |
+| Üretim süresi (1. cümle) | 23,2 sn (guard retry) | **5,0 sn** | 4,2 sn |
+
+Kelime listesi detayı (b): `öğretmen` ✅ · `mağdur` ✅ · `buğday` ✅ · `kağıt`→"kayıt" ✅ (Türkçede **doğru
+telaffuz**) · `ağaç`→"ayaç" ✅ (ğ = y kayması) · `değil`/`dağ`/`yağmur` ✅ · `iğne`→"yine" ⚠️ (respell
+"iine"; en zayıf halka). Yama ayrıca **guard retry'yi azaltıyor** (23,2 sn → 5,0 sn).
+
+**`ğ`'den bağımsız kalan Chatterbox TR kusurları** (yama her üç varyantta da aynı çıktı — `ğ` ile ilgisi yok):
+
+| Kelime | Duyulan | Not |
+|---|---|---|
+| `yerel` | "gereğe" / "geri" / "genel" | model kelimeyi tümüyle bozuyor |
+| `için` | "işin" | `ç`→`ş` kayması |
+| `Aybars` | "haybars" / "aybaş" | özel isim; üretimden üretime değişken |
+
+→ Yama **`ğ` sınıfını kapatır**; ama Chatterbox'ın TR telaffuzu hâlâ **kırılgan** (yerel/için/Aybars tipi
+hatalar yamayla çözülmez). Bu, §6 ve §9'un "TR için makine değil ön-işleme" tezinin sınırıdır: her kelime
+için sözlük/istisna gerekir. Ölçüm dosyaları: `logs/softg-bench/` (üretici `logs/softg-bench.py`,
+doğrulayıcı `logs/softg-asr.py`), dinleme seti: masaüstü `aybars-tts-test\` (**b** varyantı **a**'dan iyi mi
+— karar kulağa ait).
 
 ## 10. Pipeline TTS çalıştırma modları (2026-10-17)
 
