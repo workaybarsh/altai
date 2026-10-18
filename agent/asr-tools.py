@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""asr-tools.py -- whisper.cpp cikarim araci (aybars_says, Faz 2 iskeleti).
+"""asr-tools.py -- whisper.cpp cikarim araci (aybars_speaks, Faz 2 iskeleti).
 
 Gorev:
   1. Ses dosyasini (gerekirse) 16 kHz mono WAV'a cevirir.

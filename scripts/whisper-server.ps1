@@ -1,5 +1,5 @@
 <#
-    whisper-server.ps1 - whisper.cpp sunucusunu baslat/durdur (aybars_says)
+    whisper-server.ps1 - whisper.cpp sunucusunu baslat/durdur (aybars_speaks)
 
     Amac: modeli BELLEKTE tutmak. `whisper-cli` her cagride modeli yeniden yukler
     (~0,5 sn q5_0 / ~1,4 sn f16); bu betikle tek yukleme olur ve her istek saf cikarimdir.

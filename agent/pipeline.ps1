@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# pipeline.ps1 - ASR -> LLM -> TTS boru hatti (aybars_says)
+# pipeline.ps1 - ASR -> LLM -> TTS boru hatti (aybars_speaks)
 #
 # Akis:  WAV/Text -> whisper.cpp (asr-tools.py) -> llama-server (HTTP) -> cumlelere bol
 #        -> TTS (tts-tools.py; TR icin chatterbox duzeltmeleri OTOMATIK) -> WAV'lar

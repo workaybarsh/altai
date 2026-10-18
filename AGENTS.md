@@ -1,6 +1,6 @@
-# aybars_says · sesli yerel yapay zekâ sohbet botu · Geliştirici ve yapay zekâ ajanları için altyapı rehberi
+# aybars_speaks · sesli yerel yapay zekâ sohbet botu · Geliştirici ve yapay zekâ ajanları için altyapı rehberi
 
-Bu dosya, aybars_says (eski adı: mamidChats Chatbot) üzerinde çalışan geliştiriciler ve yapay
+Bu dosya, aybars_speaks üzerinde çalışan geliştiriciler ve yapay
 zekâ ajanları için tek doğru kaynaktır. Kullanıcıyla iletişim dili **Türkçe**dir.
 
 > Bu depo **ağırlıklı olarak planlama** aşamasındadır; ilk çalışan araç `agent/mtp_inject.py`.
@@ -101,7 +101,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 
 | Durum | Yol | İçerik |
 |---|---|---|
-| ⬜ | `mamidchats-desktop.ps1` | Ana uygulama: WinForms arayüzü, sohbet durumu, olay döngüsü |
+| ⬜ | `aybars_speaks-desktop.ps1` | Ana uygulama: WinForms arayüzü, sohbet durumu, olay döngüsü |
 | ⬜ | `agent/llm-run.ps1` | `llama-server` başlat/durdur, MTP, VRAM kapısı |
 | ✅ | `agent/mtp_inject.py` | Quant GGUF'a MTP/`nextn` başlığı ekler (taban `huihui-ai` deposundan) |
 | ✅ | `agent/mtp-durum.py` | Bir GGUF'un MTP durumunu JSON olarak yazar |
@@ -208,7 +208,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 | 2026-10-16 | **MTP doğrulandı ve zorunlu kılındı.** Hedef quant GGUF'ta MTP yok; kaynak 15 tensor mevcut; `mtp_inject.py` şart. Doğrulama + kabul testleri belgesi eklendi. | README.md, AGENTS.md, docs/mimari.md, docs/kararlar.md, docs/mtp-dogrulama.md |
 | 2026-10-16 | LLM, **Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** (mradermacher imatrix quant) olarak belirlendi. | README.md, AGENTS.md, docs/mimari.md, docs/kararlar.md |
 | 2026-10-16 | STT **Qwen3-ASR → whisper.cpp** (`large-v3-turbo`) olarak geri çevrildi. | README.md, AGENTS.md, docs/mimari.md, docs/faz2-olcum-plani.md, docs/kararlar.md |
-| 2026-10-16 | Depo adı **mamidChats-Chatbot → aybars_says**; metinler güncellendi. | tümü |
+| 2026-10-19 | Depo adı **aybars_speaks**; metinler güncellendi. | tümü |
 | 2026-10-11 | README'ye **Durum** bölümü eklendi: taslak (`v0.1-plan`), kod yok, AR-GE yedek yolları not edildi. | README.md, AGENTS.md |
 | 2026-10-11 | "Değerlendirilen ve vazgeçilen alternatifler" bölümü eklendi. | docs/kararlar.md, docs/mimari.md |
 | 2026-10-11 | STT whisper'dan **Qwen3-ASR-1.7B**'ye çekildi (o dönem); hız yedeği 0.6B. | tümü |

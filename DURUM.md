@@ -5,7 +5,7 @@
 
 ## Proje
 Windows'ta **tamamen yerel**, sesli (STT + TTS) yapay zekâ sohbet uygulaması.
-Repo: `github.com/workaybarsh/aybars_says`
+Repo: `github.com/workaybarsh/aybars_speaks`
 
 ## Tamamlananlar
 - Mimari + kararlar: `docs/mimari.md`, `docs/kararlar.md`

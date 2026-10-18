@@ -1,5 +1,5 @@
 <#
-    tts-server.ps1 - kalici TTS (Chatterbox) HTTP sunucusunu baslat/durdur (aybars_says)
+    tts-server.ps1 - kalici TTS (Chatterbox) HTTP sunucusunu baslat/durdur (aybars_speaks)
 
     Amac: TTS modelini BELLEKTE tutmak. `tts-tools.py` her cagride torch+model yukler
     (~20 sn); bu sunucuyla tek yukleme olur, her tur yalniz uretim kalir (~4-7 sn).

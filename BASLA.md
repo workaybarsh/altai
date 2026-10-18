@@ -1,6 +1,6 @@
 # BASLA — yeni sohbet başlangıç notu
 
-**Proje:** aybars_says — Windows'ta tamamen yerel, **sesli** (STT + TTS) yapay zekâ sohbet uygulaması.
+**Proje:** aybars_speaks — Windows'ta tamamen yerel, **sesli** (STT + TTS) yapay zekâ sohbet uygulaması.
 **Çalışma dizini:** bu klasör.
 
 ---
@@ -8,7 +8,7 @@
 ## Yeni sohbete yapıştıracağın ilk mesaj
 
 ```
-Proje: aybars_says — sesli (STT+TTS) yerel yapay zekâ sohbet uygulaması.
+Proje: aybars_speaks — sesli (STT+TTS) yerel yapay zekâ sohbet uygulaması.
 
 Önce şu dosyaları oku: DURUM.md, README.md, AGENTS.md, docs/kararlar.md, docs/mimari.md.
 

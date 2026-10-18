@@ -1,9 +1,9 @@
-# aybars_says — sesli yerel yapay zekâ sohbet botu (Windows)
+# aybars_speaks — sesli yerel yapay zekâ sohbet botu (Windows)
 
 Gerçek zamanlı, **tamamen yerel** ve yapay zekâ destekli **sesli** sohbet botu (Windows): mikrofonla
 konuşursun, bot **sesle** yanıt verir.
 
-> Eski adı: **mamidChats Chatbot**. Bu depo ağırlıklı olarak **plandır**; ilk çalışan araç olarak
+> Bu depo ağırlıklı olarak **plandır**; ilk çalışan araç olarak
 > `agent/mtp_inject.py` (MTP başlığı enjeksiyonu) eklenmiştir.
 
 ## Durum

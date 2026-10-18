@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tts-tools.py -- Takas edilebilir TTS araci (aybars_says).
+"""tts-tools.py -- Takas edilebilir TTS araci (aybars_speaks).
 
 Backend'ler:
   - chatterbox : Resemble AI Chatterbox (Multilingual V3 dahil) -- birincil, en dogal
@@ -563,7 +563,7 @@ def serve(args) -> int:
 # ------------------------------------------------------------------ CLI
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="Takas edilebilir TTS (aybars_says)")
+    ap = argparse.ArgumentParser(description="Takas edilebilir TTS (aybars_speaks)")
     ap.add_argument("--backend", default="chatterbox", choices=["chatterbox", "voxcpm", "piper", "sapi"])
     ap.add_argument("--text")
     ap.add_argument("--text-file")
