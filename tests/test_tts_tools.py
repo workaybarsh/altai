@@ -289,9 +289,7 @@ def test_ensure_speakable_rejects_symbol_only():
 def test_tts_server_health_and_tts(monkeypatch, tmp_path):
     """Kalici sunucu: /health ve /tts calisir (model fonksiyonlari taklit; GPU gerekmez)."""
     import threading
-    import time
     import types
-    import urllib.request
 
     monkeypatch.setattr(tts, "load_chatterbox", lambda **kw: object())
 
@@ -303,20 +301,6 @@ def test_tts_server_health_and_tts(monkeypatch, tmp_path):
 
     monkeypatch.setattr(tts, "synth_chatterbox", fake_synth)
 
-    def post(url, data):
-        # Windows loopback'ta nadir gorulen gecici reset'lere karsi yeniden dene
-        last = None
-        for _ in range(3):
-            try:
-                req = urllib.request.Request(url, data=data, method="POST",
-                                             headers={"Content-Type": "application/json"}) if data else url
-                with urllib.request.urlopen(req, timeout=30) as r:
-                    return json.loads(r.read().decode("utf-8"))
-            except (ConnectionError, OSError) as exc:
-                last = exc
-                time.sleep(0.2)
-        raise last
-
     args = types.SimpleNamespace(backend="chatterbox", lang="tr", device="cpu", t3_model="v3",
                                  exaggeration=0.5, cfg=0.5, seed=None, chatterbox_tr_raw=False,
                                  voice_prompt=None, host="127.0.0.1", port=0)
@@ -325,18 +309,18 @@ def test_tts_server_health_and_tts(monkeypatch, tmp_path):
     port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
-        health = post(f"http://127.0.0.1:{port}/health", None)
+        health = _post_json(f"http://127.0.0.1:{port}/health", None)
         assert health["ok"] is True
         assert health["loaded"] is True
 
         body = json.dumps({"texts": ["bir", "iki"], "out_dir": str(tmp_path), "prefix": "s_"}).encode()
-        out = post(f"http://127.0.0.1:{port}/tts", body)
+        out = _post_json(f"http://127.0.0.1:{port}/tts", body)
 
         # Sembol-only oge: oge bazli hata (HTTP 200, ok=True cunku digeri uretildi);
         # boylece bozuk girdi CUDA baglamini zehirlemeden partiyi dusurmez.
         body2 = json.dumps({"texts": ["tamam", "???"], "out_dir": str(tmp_path),
                             "prefix": "x_"}).encode()
-        out2 = post(f"http://127.0.0.1:{port}/tts", body2)
+        out2 = _post_json(f"http://127.0.0.1:{port}/tts", body2)
     finally:
         srv.shutdown()
         srv.server_close()
@@ -392,10 +376,13 @@ def test_batch_needs_out_prefix_or_out(tmp_path, capsys):
 
 
 def _post_json(url, data):
+    # Windows loopback'ta olculdu: ardışık isteklerin ~%30'u WinError 10054 (RST) ile düşüyor
+    # (minimal stdlib http.server + ham socket ile de aynı → ortam kaynaklı, sunucu kodu değil).
+    # Bu yüzden testlerde cömert retry; tekrar eden istek aynı parametrelerle gider (idempotent).
     import time
     import urllib.request
     last = None
-    for _ in range(3):
+    for attempt in range(10):
         try:
             req = urllib.request.Request(url, data=data, method="POST",
                                          headers={"Content-Type": "application/json"}) if data else url
@@ -403,7 +390,7 @@ def _post_json(url, data):
                 return json.loads(r.read().decode("utf-8"))
         except (ConnectionError, OSError) as exc:
             last = exc
-            time.sleep(0.2)
+            time.sleep(0.1 * (attempt + 1))
     raise last
 
 
@@ -420,7 +407,7 @@ def test_tts_server_piper_dispatch(monkeypatch, tmp_path):
     calls = []
 
     def fake_piper(text, out_wav, model_path=None, piper_exe=None):
-        calls.append((text, model_path, piper_exe))
+        calls.append((text, out_wav, model_path, piper_exe))
         os.makedirs(os.path.dirname(os.path.abspath(out_wav)), exist_ok=True)
         with open(out_wav, "wb") as f:
             f.write(b"RIFF")
@@ -448,8 +435,14 @@ def test_tts_server_piper_dispatch(monkeypatch, tmp_path):
     assert health["ok"] is True and health["backend"] == "piper"
     assert health["loaded"] is True and health["load_seconds"] == 0.0
     assert out["ok"] is True and out["count"] == 2 and out["failed"] == 0
-    assert [c[0] for c in calls] == ["merhaba", "dunya"]
-    assert calls[0][1] == str(model) and calls[0][2] == str(exe)
+    # ⚠️ Windows loopback'ta reset olursa _post_json istegi tekrar gonderir ve ayni parti
+    # ikinci kez sentezlenir; bu yuzden siraya degil **ilk gorulme sirasina** bakilir.
+    texts = []
+    for c in calls:
+        if c[0] not in texts:
+            texts.append(c[0])
+    assert texts == ["merhaba", "dunya"]
+    assert calls[0][2] == str(model) and calls[0][3] == str(exe)
     assert os.path.exists(tmp_path / "p_1.wav")
 
 
@@ -480,7 +473,8 @@ def test_tts_server_passes_respell_switches_per_request(monkeypatch, tmp_path):
     seen = []
 
     def fake_synth(text, out_wav, *a, **k):
-        seen.append({"text": text, "tr_fix": a[7], "respell": a[8], "softg": k.get("softg")})
+        seen.append({"prefix": os.path.basename(out_wav), "text": text,
+                     "tr_fix": a[7], "respell": a[8], "softg": k.get("softg")})
         os.makedirs(os.path.dirname(os.path.abspath(out_wav)), exist_ok=True)
         with open(out_wav, "wb") as f:
             f.write(b"RIFF")
@@ -497,13 +491,23 @@ def test_tts_server_passes_respell_switches_per_request(monkeypatch, tmp_path):
     port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
-        for extra in ({"softg": False}, {"tr_raw": True}, {}):
-            body = dict({"texts": ["değil"], "out_dir": str(tmp_path), "prefix": "r_"}, **extra)
+        for i, extra in enumerate(({"softg": False}, {"tr_raw": True}, {}), 1):
+            body = dict({"texts": ["değil"], "out_dir": str(tmp_path), "prefix": f"r{i}_"}, **extra)
             _post_json(f"http://127.0.0.1:{port}/tts", json.dumps(body).encode())
     finally:
         srv.shutdown()
         srv.server_close()
 
-    assert seen[0]["softg"] is False and seen[0]["respell"] is True    # yalniz 'ğ' kapali
-    assert seen[1]["respell"] is False and seen[1]["tr_fix"] is False  # tr_raw: hepsi kapali
-    assert seen[2]["softg"] is True and seen[2]["respell"] is True     # varsayilan: hepsi acik
+    def last_call(prefix):
+        # ⚠️ Windows loopback reset'inde _post_json istegi tekrar gonderir ve ayni istek iki
+        # kez sentezlenir; bu yuzden sirayla degil, istek basina **son** cagriyla dogrulanir.
+        rows = [s for s in seen if s["prefix"].startswith(prefix)]
+        assert rows, f"{prefix} istegi icin sentez cagrisi yok"
+        return rows[-1]
+
+    first = last_call("r1_")
+    assert first["softg"] is False and first["respell"] is True        # yalniz 'ğ' kapali
+    second = last_call("r2_")
+    assert second["respell"] is False and second["tr_fix"] is False    # tr_raw: hepsi kapali
+    third = last_call("r3_")
+    assert third["softg"] is True and third["respell"] is True         # varsayilan: hepsi acik

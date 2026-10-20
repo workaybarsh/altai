@@ -175,6 +175,12 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
     **göreli** yolla sorunsuz — `cwd` + göreli yol kullan). Çözüm: Piper'ı ve ses dosyasını
     **ASCII dizine** kur (`scripts/piper-kur.ps1` → `%LOCALAPPDATA%\altai\piper`); whisper-cli'yi
     **göreli yolla** çağır. (Tuzak #12'nin genellemesi.)
+17. **Windows loopback'te HTTP isteklerinin ~%30'u `WinError 10054` (RST) ile düşebilir** (ölçüldü
+    2026-10-21: `urllib`/`http.client`/ham socket ve minimal stdlib `http.server` repro'sunda aynı →
+    **ortam kaynaklı**, sunucu kodu değil). Bu yüzden HTTP çağrıları **retry** ile yazılır
+    (`llm-stream.py` TTS çağrısı 2 deneme; testlerde `_post_json` 10 deneme) ve retry edilen istek
+    **idempotent** olmalıdır: aynı istek tekrar giderse sunucu aynı sesi ikinci kez üretir
+    (zararsız, biraz CPU). Testler bu yüzden sıra numarasına değil, istek başına sonuca bakar.
 
 ## 7. Değişiklik kontrol listesi
 
@@ -190,6 +196,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 
 | Tarih | Değişiklik | Dosyalar |
 |---|---|---|
+| 2026-10-21 | **Flaky sunucu testleri retry'lere dayanıklı hale getirildi.** Ölçüm: Windows loopback'te ardışık HTTP isteklerinin **~%30'u** `WinError 10054` (RST) ile düşüyor; minimal stdlib sunucu + ham socket repro'sunda da aynı → **ortam kaynaklı** (sunucu kodu değil). Testlerde: istek başına ayrı `prefix` + istek başına **son** çağrı ile doğrulama (retry aynı partiyi ikinci kez sentezlerse sıra tabanlı assert kayıyordu — `test_tts_server_passes_respell_switches_per_request`, `test_tts_server_piper_dispatch`) ve `_post_json`'de 10 deneme. Mutasyon kontrolü: `tr_raw` kablolaması bozulduğunda ve piper argüman sırası takas edildiğinde testler hâlâ yakalıyor. **59 test, 10/10 yeşil.** | tests/test_tts_tools.py, AGENTS.md |
 | 2026-10-21 | **Depo ve ürün adı Altai oldu** (`github.com/workaybarsh/altai`); "local AI chatbot assistant" konumlandırması README/AGENTS başlıklarına işlendi, Piper dizini `%LOCALAPPDATA%\altai\piper` (karar #25). | README.md, AGENTS.md, DURUM.md, BASLA.md, docs/mimari.md, docs/kararlar.md, agent/, scripts/ |
 | 2026-10-19 | **MIT lisansı eklendi** (`LICENSE`; telif sahibi `workaybarsh`); karar #24 işlendi, README lisans bölümü ve kullanım satırı güncellendi. | LICENSE, README.md, docs/kararlar.md, AGENTS.md |
 | 2026-10-19 | Depo adı **aybars_speaks** (2026-10-21'de **Altai** oldu); metinler güncellendi. | tümü |
