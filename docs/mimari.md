@@ -1,6 +1,6 @@
 # Mimari
 
-Bu belge, aybars_speaks'in tasarımını, veri akışını ve **gecikme
+Bu belge, Altai'nin tasarımını, veri akışını ve **gecikme
 bütçesini** tanımlar.
 
 ## 1. Ana ilke
@@ -192,7 +192,7 @@ Ses → yazı, **whisper.cpp** ile yapılır (Qwen3-ASR kullanılmaz).
 
 | Yol | İçerik |
 |---|---|
-| `aybars_speaks-desktop.ps1` | WinForms arayüzü, olay döngüsü |
+| `altai-desktop.ps1` | WinForms arayüzü, olay döngüsü |
 | `agent/llm-run.ps1` | `llama-server`, MTP, VRAM kapısı |
 | `agent/asr-tools.py` | whisper.cpp çıkarımı |
 | `agent/tts-tools.py` | Chatterbox / voxcpm (Trendyol-TTS) / Piper / SAPI |

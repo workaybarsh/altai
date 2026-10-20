@@ -1,10 +1,13 @@
-# aybars_speaks — sesli yerel yapay zekâ sohbet botu (Windows)
+# Altai — local AI chatbot assistant (yerel sesli yapay zekâ sohbet asistanı, Windows)
 
-Gerçek zamanlı, **tamamen yerel** ve yapay zekâ destekli **sesli** sohbet botu (Windows): mikrofonla
-konuşursun, bot **sesle** yanıt verir.
+**Altai**, Windows'ta gerçek zamanlı, **tamamen yerel** ve yapay zekâ destekli **sesli** sohbet
+asistanıdır: mikrofonla konuşursun, asistan **sesle** yanıt verir.
 
 > Bu depo ağırlıklı olarak **plandır**; ilk çalışan araç olarak
 > `agent/mtp_inject.py` (MTP başlığı enjeksiyonu) eklenmiştir.
+>
+> Depo: `github.com/workaybarsh/altai` — eski ad `aybars_speaks`; eski bağlantılar GitHub
+> yönlendirmesiyle çalışmaya devam eder (karar #25).
 
 ## Durum
 

@@ -3,7 +3,7 @@
 
     NEDEN %LOCALAPPDATA%: piper'in espeak-ng/onnxruntime katmani **non-ASCII yollari okuyamiyor**
     (repo yolu "Varsayilan" -> 'i' noktali degil). Bu yuzden ikili ve ses DOSYASI ASCII bir dizine
-    kurulur: %LOCALAPPDATA%\aybars\piper (varsayilan: piper.exe + voice.onnx).
+    kurulur: %LOCALAPPDATA%\altai\piper (varsayilan: piper.exe + voice.onnx).
     Ayni sinir whisper-cli.exe'de de var (non-ASCII MUTLAK yolda 0xC0000409 ile coker).
 
     Kullanim:
@@ -25,7 +25,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-if (-not $Dir) { $Dir = Join-Path $env:LOCALAPPDATA 'aybars\piper' }
+if (-not $Dir) { $Dir = Join-Path $env:LOCALAPPDATA 'altai\piper' }
 New-Item -ItemType Directory -Force -Path $Dir | Out-Null
 
 $exe = Join-Path $Dir 'piper.exe'

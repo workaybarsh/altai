@@ -1,5 +1,5 @@
 <#
-    tts-server.ps1 - kalici TTS (Chatterbox) HTTP sunucusunu baslat/durdur (aybars_speaks)
+    tts-server.ps1 - kalici TTS (Chatterbox) HTTP sunucusunu baslat/durdur (Altai)
 
     Amac: TTS modelini BELLEKTE tutmak. `tts-tools.py` her cagride torch+model yukler
     (~20 sn); bu sunucuyla tek yukleme olur, her tur yalniz uretim kalir (~4-7 sn).
@@ -69,10 +69,10 @@ if ($NoSoftg) { $args += @('--chatterbox-no-softg') }
 if ($TrRaw) { $args += @('--chatterbox-tr-raw') }
 
 # piper: ONEMLI - ikili ve ses dosyasi ASCII yolda olmali (espeak-ng/onnxruntime non-ASCII
-# yolda coker). Varsayilan: %LOCALAPPDATA%\aybars\piper (ASCII).
+# yolda coker). Varsayilan: %LOCALAPPDATA%\altai\piper (ASCII).
 if ($Backend -eq 'piper') {
-    if (-not $Piper) { $Piper = Join-Path $env:LOCALAPPDATA 'aybars\piper\piper.exe' }
-    if (-not $PiperModel) { $PiperModel = Join-Path $env:LOCALAPPDATA 'aybars\piper\voice.onnx' }
+    if (-not $Piper) { $Piper = Join-Path $env:LOCALAPPDATA 'altai\piper\piper.exe' }
+    if (-not $PiperModel) { $PiperModel = Join-Path $env:LOCALAPPDATA 'altai\piper\voice.onnx' }
 }
 if ($Piper) { $args += @('--piper', $Piper) }
 if ($PiperModel) { $args += @('--piper-model', $PiperModel) }

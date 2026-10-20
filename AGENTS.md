@@ -1,6 +1,6 @@
-# aybars_speaks · sesli yerel yapay zekâ sohbet botu · Geliştirici ve yapay zekâ ajanları için altyapı rehberi
+# Altai · local AI chatbot assistant · Geliştirici ve yapay zekâ ajanları için altyapı rehberi
 
-Bu dosya, aybars_speaks üzerinde çalışan geliştiriciler ve yapay
+Bu dosya, Altai üzerinde çalışan geliştiriciler ve yapay
 zekâ ajanları için tek doğru kaynaktır. Kullanıcıyla iletişim dili **Türkçe**dir.
 
 > Bu depo **ağırlıklı olarak planlama** aşamasındadır; ilk çalışan araç `agent/mtp_inject.py`.
@@ -8,7 +8,7 @@ zekâ ajanları için tek doğru kaynaktır. Kullanıcıyla iletişim dili **Tü
 
 ## 1. Ürün tek paragrafta
 
-Windows'ta tamamen yerel çalışan, gerçek zamanlı, yapay zekâ destekli **sesli sohbet botu**. Tek bir
+Windows'ta tamamen yerel çalışan, gerçek zamanlı, yapay zekâ destekli **sesli sohbet asistanı**. Tek bir
 WinForms penceresinde kullanıcı mikrofonla konuşur; uygulama konuşmayı yazıya çevirir (**whisper.cpp**),
 yerel dil modeline verir (**Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M**, **MTP daima açık**) ve yanıtı
 sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye içinde** ilk sesin çıkmasıdır.
@@ -101,7 +101,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 
 | Durum | Yol | İçerik |
 |---|---|---|
-| ⬜ | `aybars_speaks-desktop.ps1` | Ana uygulama: WinForms arayüzü, sohbet durumu, olay döngüsü |
+| ⬜ | `altai-desktop.ps1` | Ana uygulama: WinForms arayüzü, sohbet durumu, olay döngüsü |
 | ⬜ | `agent/llm-run.ps1` | `llama-server` başlat/durdur, MTP, VRAM kapısı |
 | ✅ | `agent/mtp_inject.py` | Quant GGUF'a MTP/`nextn` başlığı ekler (taban `huihui-ai` deposundan) |
 | ✅ | `agent/mtp-durum.py` | Bir GGUF'un MTP durumunu JSON olarak yazar |
@@ -110,7 +110,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 | ✅ | `scripts/asr-olcum.ps1` | Faz 2 ASR ölçüm koşum takımı (sarmalayıcı) |
 | ✅ | `scripts/whisper-server.ps1` | Kalıcı `whisper-server` başlat/durdur (`-ng`, port 8081); model bellekte kalır |
 | ✅ | `scripts/tts-server.ps1` | Kalıcı TTS sunucusu (`tts-tools.py --serve`, port 8082); Chatterbox bellekte kalır · `-Backend piper` ile **CPU Piper** (yükleme yok) |
-| ✅ | `scripts/piper-kur.ps1` | Piper + `tr_TR-dfki-medium` sesini **ASCII dizine** kurar (`%LOCALAPPDATA%\aybars\piper`; repo yolu non-ASCII olduğu için şart) |
+| ✅ | `scripts/piper-kur.ps1` | Piper + `tr_TR-dfki-medium` sesini **ASCII dizine** kurar (`%LOCALAPPDATA%\altai\piper`; repo yolu non-ASCII olduğu için şart) |
 | ✅ | `agent/tts-tools.py` | Takas edilebilir TTS: Chatterbox / **voxcpm** (Trendyol-TTS, TR) / **Piper** / SAPI + **toplu mod** (`--batch-file`) + **kalıcı sunucu** (`--serve`; chatterbox **veya piper**) + **uzun-kuyruk guard** (Chatterbox; süre sınırı + 1 retry; `--no-guard`) |
 | ✅ | `agent/pipeline.ps1` | Boru hattı (**toplu/referans yol**): ASR → LLM (HTTP) → cümle bölme → **toplu** TTS (model tek yükleme) |
 | ✅ | `agent/llm-stream.py` | **Akışlı tur motoru:** `llama-server` **SSE** → kademeli cümle bölme → cümle başına TTS → arka planda çalma; zaman damgalı JSON (`reasoning_content` yok sayılır, sembol-only atlanır, geçici ağ hatasında 2 deneme) |
@@ -173,7 +173,7 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
     **Piper**'ın espeak-ng katmanı `Illegal byte sequence`, onnxruntime `0xC0000409 (fast-fail)`;
     **`whisper-cli.exe`** non-ASCII **mutlak** `-m`/`-f` yoluyla `0xC0000409` ile çöküyor (aynı makinede
     **göreli** yolla sorunsuz — `cwd` + göreli yol kullan). Çözüm: Piper'ı ve ses dosyasını
-    **ASCII dizine** kur (`scripts/piper-kur.ps1` → `%LOCALAPPDATA%\aybars\piper`); whisper-cli'yi
+    **ASCII dizine** kur (`scripts/piper-kur.ps1` → `%LOCALAPPDATA%\altai\piper`); whisper-cli'yi
     **göreli yolla** çağır. (Tuzak #12'nin genellemesi.)
 
 ## 7. Değişiklik kontrol listesi
@@ -190,8 +190,9 @@ sesli okur (TTS). Hedef, kullanıcı konuşmayı bitirdikten sonra **1 saniye i�
 
 | Tarih | Değişiklik | Dosyalar |
 |---|---|---|
+| 2026-10-21 | **Depo ve ürün adı Altai oldu** (`github.com/workaybarsh/altai`); "local AI chatbot assistant" konumlandırması README/AGENTS başlıklarına işlendi, Piper dizini `%LOCALAPPDATA%\altai\piper` (karar #25). | README.md, AGENTS.md, DURUM.md, BASLA.md, docs/mimari.md, docs/kararlar.md, agent/, scripts/ |
 | 2026-10-19 | **MIT lisansı eklendi** (`LICENSE`; telif sahibi `workaybarsh`); karar #24 işlendi, README lisans bölümü ve kullanım satırı güncellendi. | LICENSE, README.md, docs/kararlar.md, AGENTS.md |
-| 2026-10-19 | Depo adı **aybars_speaks**; metinler güncellendi. | tümü |
+| 2026-10-19 | Depo adı **aybars_speaks** (2026-10-21'de **Altai** oldu); metinler güncellendi. | tümü |
 | 2026-10-18 | **Chatterbox `ğ` telaffuz hatası bulundu ve düzeltildi (kullanıcı kulağı → ölçüm).** Şikâyet: `çalıştığı` → "çalıştı ki". Geri-çevirim doğruladı ("Tam yarar çalıştı ki işin…"). **Kök neden:** grapheme sözlükte `ğ` **var**, NFKD ayrığı yok → hata tokenizer'da değil **akustik modelde**. Yeni `tr_softg()`: `ğ` iki ünlü arası → `y`, ünlüden sonra ünsüz/sonda → uzun ünlü (`dağ`→`daa`); `ş→sh`'den önce uygulanır. **A/B (seed 42, aynı metinler):** `çalıştığı` **düzeldi** (eski yama "çalış dışı", yamasız "çalıtıcı"), 9 kelimede kelime-doğru **%44 → %67**, guard retry **23,2 → 5,0 sn**. Kapatma: `--chatterbox-no-softg` / istek başına `{"softg": false}` (sunucu A/B kablolaması). **Kulak testi ✅ (2026-10-18): kullanıcı "yeni olan güzel" dedi → yama varsayılan kabul edildi (karar #23).** ⚠️ `yerel`/`için`/`Aybars` hataları sürüyor → Chatterbox TR kırılgan. **59 test** (+3). Ölçüm: `logs/softg-bench.py`, `logs/softg-asr.py`. | agent/tts-tools.py, scripts/tts-server.ps1, tests/test_tts_tools.py, docs/tts-kiyaslama.md (§9.4), docs/kararlar.md (#23), DURUM.md, AGENTS.md |
 | 2026-10-18 | **TTS darboğazı çözüldü: Piper (CPU) akışlı hatta bağlandı.** `tts-tools.py --serve --backend piper` + `scripts/tts-server.ps1 -Backend piper` + `scripts/piper-kur.ps1` (ASCII dizine kurulum). **Ölçüm (aynı oturum, aynı istem):** ilk ses **Chatterbox 4,2–7,6 sn → Piper 0,77–0,90 sn** (hedefin <1 sn içinde); Piper `tr_TR-dfki-medium` **RTF 0,19**, geri-çevirim **WER 0,000** (5/5). Uçtan uca (ASR turbo ~9,9 sn + Piper) **~11,7 sn** → kalan tek darboğaz **ASR (%85)**. Piper CPU'da çalışır (ilke #1: GPU tümüyle LLM'e), guard retry üretmez. **Yeni tuzak #16:** Piper/onnxruntime ve `whisper-cli` non-ASCII yolda çöker (`Illegal byte sequence` / `0xC0000409`) → Piper ASCII dizinde, whisper-cli göreli yolla. **54 test** (+2: piper sunucu yolu). | agent/tts-tools.py, scripts/tts-server.ps1, scripts/piper-kur.ps1, tests/test_tts_tools.py, docs/akishli-hat.md, docs/tts-kiyaslama.md, DURUM.md, AGENTS.md, README.md |
 | 2026-10-18 | **Akışlı hat eklendi (ilke #7 kodda).** `agent/llm-stream.py`: `llama-server` **SSE** → kademeli cümle bölme → cümle başına TTS → **arka planda** çalma (oynatma thread'i; `reasoning_content` yok sayılır, sembol-only atlanır) + `agent/pipeline-stream.ps1` (ASR sarmalayıcısı). **Ölçüm (LLM+TTS): ilk ses 18,8 sn → 7,05–7,60 sn (~2,5×)**; düşünme açıkken 9,52 sn; uçtan uca (ASR turbo CPU 9,91 sn) 13,4 sn. **Bulgular:** kısa cümlede guard retry ilk sesi 13–18 sn'ye çıkarıyor — uç enerjisi analizi kuyruğun **fazladan konuşma** olduğunu gösterdi (uç kırpma çözmez). Ölçüm sırasında iki gerçek `ConnectionResetError` **şeffaf telafi** edildi. **Kritik düzeltme:** PS 5.1 `Get-Content -Raw` BOM'suz UTF-8'i ANSI okuyordu → akışlı WAV'lar "kayıp" (tuzak #15); ASR yolu `--out` + UTF-8'e alındı; TTS sunucu çağrısı **2 deneme** (yerel yedeğe düşüp OOM olmak yerine dürüst hata). **52 test.** | agent/llm-stream.py, agent/pipeline-stream.ps1, agent/pipeline.ps1, tests/test_llm_stream.py, docs/akishli-hat.md, docs/kararlar.md, DURUM.md, AGENTS.md |

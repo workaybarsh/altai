@@ -4,8 +4,8 @@
 > [`AGENTS.md`](AGENTS.md), [`docs/`](docs/).
 
 ## Proje
-Windows'ta **tamamen yerel**, sesli (STT + TTS) yapay zekâ sohbet uygulaması.
-Repo: `github.com/workaybarsh/aybars_speaks`
+**Altai** — local AI chatbot assistant. Windows'ta **tamamen yerel**, sesli (STT + TTS) yapay zekâ sohbet asistanı.
+Repo: `github.com/workaybarsh/altai`
 
 ## Tamamlananlar
 - Mimari + kararlar: `docs/mimari.md`, `docs/kararlar.md`
@@ -72,7 +72,7 @@ Repo: `github.com/workaybarsh/aybars_speaks`
   JSON okumaları `-Encoding UTF8`'e alındı; ASR yolu `--out` + dosyadan okumaya çevrildi (stdout
   boru hattı kodlamayı bozabiliyor).
 - **TTS darboğazı ÇÖZÜLDÜ — Piper (2026-10-18):** `tts-tools.py --serve --backend piper` +
-  `scripts/piper-kur.ps1` (ASCII dizine kurar: `%LOCALAPPDATA%\aybars\piper`). Piper
+  `scripts/piper-kur.ps1` (ASCII dizine kurar: `%LOCALAPPDATA%\altai\piper`). Piper
   `tr_TR-dfki-medium`: **RTF 0,19**, geri-çevirim **WER 0,000** (5/5 cümle birebir), **CPU'da** (GPU yok).
   Akışlı hatta **ilk ses (LLM+TTS): 0,77–0,90 sn** (Chatterbox 4,2–7,6 sn; guard retry ile 30 sn).
   Uçtan uca (ASR + piper): **~11,7 sn** (Chatterbox 13,4 sn) → **ASR hâlâ baskın (%85)**.
@@ -137,7 +137,7 @@ Repo: `github.com/workaybarsh/aybars_speaks`
 - ⚠️ **BÜYÜK TEMİZLİK (2026-10-18) — disk verileri silindi, KAYNAK KOD DURUYOR.** Kullanıcı kararıyla
   ("sonra tekrar üzerinde çalışırsak yükleriz") silindi (**15,6 GB** kazanıldı; C: 154,5 → 170,2 GB):
   `models\` (9B i1-Q5_K_M GGUF **6,5 GB** + `ggml-large-v3-turbo-q5_0.bin` 0,5 GB) · `tts-venv` (**5,4 GB**) ·
-  `%LOCALAPPDATA%\aybars` (piper 0,1 GB) · HF `models--ResembleAI--chatterbox` (**3,0 GB**) · `logs\`
+  `%LOCALAPPDATA%\altai` (piper 0,1 GB) · HF `models--ResembleAI--chatterbox` (**3,0 GB**) · `logs\`
   (ölçüm artefaktları + dev betikleri: `asr-diff.py`, `softg-bench.py`, `softg-asr.py`, `dinle-kit.py`,
   `check-grapheme.py`, `bench-piper.py`…). **Kalan:** `tools\` (whisper + llama ikilileri, 780 MB).
   **Geri kurulum:** (1) `tts-venv` → `pip install` (aşağıdaki liste: torch 2.11+cu128, chatterbox-tts,
@@ -161,7 +161,7 @@ Repo: `github.com/workaybarsh/aybars_speaks`
   `pipeline.ps1 -AsrServerUrl http://127.0.0.1:8081 -TtsServerUrl http://127.0.0.1:8082`.
   **Akışlı hat:** `pipeline-stream.ps1` (aynı sunucular; `-Play` ile üretilen sesi hemen çalar).
   ⚠️ `tts-server` bozuk girdide CUDA bağlamını kaybederse `/health` `fatal` döner → yeniden başlat.
-- **Piper (CPU TTS, 2026-10-18):** `scripts\piper-kur.ps1` → `%LOCALAPPDATA%\aybars\piper`
+- **Piper (CPU TTS, 2026-10-18):** `scripts\piper-kur.ps1` → `%LOCALAPPDATA%\altai\piper`
   (`piper.exe` + `voice.onnx`); sonra `scripts\tts-server.ps1 -Backend piper -Port 8082`.
   ⚠️ **ASCII dizin şart** (espeak-ng non-ASCII yolu okuyamaz; onnxruntime `0xC0000409` çöker).
   Ayrıntı + ölçüm: [`docs/akishli-hat.md`](docs/akishli-hat.md) §5.2.

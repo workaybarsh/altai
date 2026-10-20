@@ -1,5 +1,5 @@
 <#
-    MTP durum ve enjeksiyon araci (aybars_speaks)
+    MTP durum ve enjeksiyon araci (Altai)
 
     Ne yapar:
       - Bir GGUF'un MTP/nextn basligi tasiyip tasimadigini denetler (agent/mtp-durum.py)

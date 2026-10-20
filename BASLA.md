@@ -1,6 +1,6 @@
 # BASLA — yeni sohbet başlangıç notu
 
-**Proje:** aybars_speaks — Windows'ta tamamen yerel, **sesli** (STT + TTS) yapay zekâ sohbet uygulaması.
+**Proje:** Altai — local AI chatbot assistant (Windows'ta tamamen yerel, **sesli** (STT + TTS) yapay zekâ sohbet asistanı).
 **Çalışma dizini:** bu klasör.
 
 ---
@@ -8,7 +8,7 @@
 ## Yeni sohbete yapıştıracağın ilk mesaj
 
 ```
-Proje: aybars_speaks — sesli (STT+TTS) yerel yapay zekâ sohbet uygulaması.
+Proje: Altai — sesli (STT+TTS) yerel yapay zekâ sohbet asistanı.
 
 Önce şu dosyaları oku: DURUM.md, README.md, AGENTS.md, docs/kararlar.md, docs/mimari.md.
 

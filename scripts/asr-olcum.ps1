@@ -1,5 +1,5 @@
 <#
-    Faz 2 ASR olcum kosum takimi (aybars_speaks)
+    Faz 2 ASR olcum kosum takimi (Altai)
 
     whisper.cpp hattini bir WAV klasoru uzerinde kosturur, gecikme/RTF toplar ve
     `logs\faz2-asr-sonuc.json` yazar. Asil is `agent/asr-tools.py` icindedir; bu

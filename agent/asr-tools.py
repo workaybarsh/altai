@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""asr-tools.py -- whisper.cpp cikarim araci (aybars_speaks, Faz 2 iskeleti).
+"""asr-tools.py -- whisper.cpp cikarim araci (Altai, Faz 2 iskeleti).
 
 Gorev:
   1. Ses dosyasini (gerekirse) 16 kHz mono WAV'a cevirir.
@@ -204,7 +204,7 @@ def transcribe_server(server_url, wav, language="tr", timeout=600):
     import uuid
 
     url = server_url.rstrip("/") + "/inference"
-    boundary = "----aybars" + uuid.uuid4().hex
+    boundary = "----altai" + uuid.uuid4().hex
     with open(wav, "rb") as f:
         audio_bytes = f.read()
 
