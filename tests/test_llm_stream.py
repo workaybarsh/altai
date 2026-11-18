@@ -1,4 +1,4 @@
-"""llm-stream.py'nin cevrimdisi davranislarini dogrular (gercek LLM/TTS gerekmez)."""
+"""Verifies the offline behaviour of llm-stream.py (no real LLM/TTS needed)."""
 import importlib.util
 import json
 import os
@@ -15,7 +15,7 @@ ls = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ls)
 
 
-# --------------------------------------------------------------- cumle bolme
+# ------------------------------------------------------------ sentence splitting
 
 def test_sentence_buffer_splits_on_boundary():
     sb = ls.SentenceBuffer()
@@ -25,7 +25,7 @@ def test_sentence_buffer_splits_on_boundary():
 
 
 def test_sentence_buffer_symbol_only_is_not_speakable():
-    """Tampon saf bolme yapar; gonderilebilirlik filtresi cagirana (run) aittir."""
+    """The buffer only splits; the speakability filter belongs to the caller (run)."""
     sb = ls.SentenceBuffer()
     out = sb.feed("???") + sb.flush()
     assert out == ["???"]
@@ -34,7 +34,7 @@ def test_sentence_buffer_symbol_only_is_not_speakable():
 
 def test_sentence_buffer_force_flush_long_text():
     sb = ls.SentenceBuffer(force_chars=40, soft_chars=0)
-    out = sb.feed("kelime " * 12)     # sinirdan uzun, noktalama yok
+    out = sb.feed("kelime " * 12)     # longer than the limit, no punctuation
     assert out and len(out[0]) <= 41
     assert out[0].startswith("kelime")
 
@@ -42,7 +42,7 @@ def test_sentence_buffer_force_flush_long_text():
 def test_sentence_buffer_soft_split_on_comma():
     sb = ls.SentenceBuffer(force_chars=500, soft_chars=30)
     out = sb.feed("birinci kisim, ikinci kisim, ucuncu kisim devam ediyor")
-    assert out and out[0].endswith(",")     # virgulden erken baslatildi
+    assert out and out[0].endswith(",")     # split started early at the comma
 
 
 def test_is_speakable():
@@ -53,11 +53,11 @@ def test_is_speakable():
 
 
 def test_json_summary_is_utf8_literal(tmp_path):
-    """--json-out UTF-8 ve ensure_ascii=False yazmali (tuzak #14).
+    """--json-out must write UTF-8 with ensure_ascii=False (pitfall #14).
 
-    Dosyayi PowerShell 5.1 `Get-Content -Raw` ile okuyan taraf **ANSI** varsayar;
-    JSON'da kacisli (\\u00e7) olursa sorun yok ama yollardaki 'i' ancak gercek
-    UTF-8 baytlarinda dogru cozulur. Bu yuzden sozlesme: UTF-8 + ensure_ascii=False.
+    The side reading the file with PowerShell 5.1 `Get-Content -Raw` assumes **ANSI**;
+    escaped (\\u00e7) is fine in the JSON, but the 'i' in paths only
+    decodes correctly in real UTF-8 bytes. Hence the contract: UTF-8 + ensure_ascii=False.
     """
     path = tmp_path / "s.json"
     ls._json({"ok": True, "text": "çığ İĞÜŞ", "out": r"C:\Varsayılan\x.wav"}, str(path))
@@ -67,18 +67,18 @@ def test_json_summary_is_utf8_literal(tmp_path):
     assert json.loads(raw.decode("utf-8"))["out"].endswith("x.wav")
 
 
-# ------------------------------------------------------- sahte sunucular
+# ------------------------------------------------------- fake servers
 
 class _FakeLLM(BaseHTTPRequestHandler):
-    """SSE akisi taklidi: dusunme + icerik parcalari."""
+    """SSE stream stub: reasoning + content chunks."""
     chunks = []
     seen_body = {}
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length", 0) or 0)
         _FakeLLM.seen_body = json.loads(self.rfile.read(n).decode("utf-8"))
-        # Content-Length ile tek parca yaz: Windows loopback'te yarim kapanan
-        # baglanti ConnectionResetError uretiyor (test kirilgan oluyordu).
+        # Write in one piece with Content-Length: on Windows loopback a half-closed
+        # connection raises ConnectionResetError (the test used to be flaky).
         parts = []
         for kind, txt in self.chunks:
             key = "reasoning_content" if kind == "reasoning" else "content"
@@ -92,8 +92,8 @@ class _FakeLLM(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
-        # Windows loopback: sunucu yaniti yazdiktan hemen sonra soketi kapatirsa
-        # istemcide ConnectionResetError olabiliyor -> kisa bekle.
+        # Windows loopback: if the server closes the socket right after writing the response,
+        # the client can see ConnectionResetError -> brief wait.
         time.sleep(0.05)
 
     def log_message(self, *a):
@@ -145,7 +145,7 @@ def test_iter_deltas_separates_reasoning(tmp_path):
     kinds = [k for k, _ in got]
     assert ("reasoning", "dusunuyorum...") in got
     assert ("content", "Merhaba!") in got
-    assert kinds[0] == "first"                       # ilk parca isaretlenir
+    assert kinds[0] == "first"                       # the first chunk is marked
     assert _FakeLLM.seen_body["stream"] is True
     assert _FakeLLM.seen_body["chat_template_kwargs"]["enable_thinking"] is True
 
@@ -171,15 +171,15 @@ def test_run_end_to_end_with_fakes(tmp_path):
     assert out["ok"] is True
     assert [s["text"] for s in out["sentences"]] == ["Merhaba!", "Nasilsin?", "Iyiyim."]
     assert out["answer"] == "Merhaba! Nasilsin? Iyiyim."
-    assert out["reasoning_chars"] == 3                    # dusunme icerige karismadi
+    assert out["reasoning_chars"] == 3                    # reasoning did not leak into the content
     assert out["first_token_kind"] == "reasoning"
     for key in ("first_token_seconds", "first_sentence_seconds", "first_audio_seconds",
                 "llm_seconds", "total_seconds"):
         assert isinstance(out[key], float)
-    # ilk ses, LLM bitmeden hazir olmali (akisli hat: ustelik asil amac)
+    # first audio must be ready before the LLM finishes (streaming pipeline: the main goal)
     assert out["first_audio_seconds"] <= out["total_seconds"]
     assert sum(1 for s in out["sentences"] if os.path.exists(s["out"])) == 3
-    assert len(_FakeTTS.requests) == 3                    # cumle basina bir istek
+    assert len(_FakeTTS.requests) == 3                    # one request per sentence
 
 
 def test_run_skips_symbol_only_sentence(tmp_path):
@@ -198,13 +198,13 @@ def test_run_skips_symbol_only_sentence(tmp_path):
         tts_srv.server_close()
 
     assert [s["text"] for s in out["sentences"]] == ["Merhaba!"]
-    assert len(_FakeTTS.requests) == 1                    # sembol-only gonderilmedi
+    assert len(_FakeTTS.requests) == 1                    # symbol-only sentence was not sent
 
 
-# --------------------------------------------- dayaniklilik (Windows loopback RST)
+# ------------------------------------------- resilience (Windows loopback RST)
 
 def test_synth_retries_transient_connection_error(monkeypatch, tmp_path):
-    """Gecici socket reset'i (WinError 10054) tekrar denenir; sentez idempotent."""
+    """A transient socket reset (WinError 10054) is retried; synthesis is idempotent."""
     calls = []
 
     def fake_post(url, payload, timeout=300):
@@ -222,7 +222,7 @@ def test_synth_retries_transient_connection_error(monkeypatch, tmp_path):
 
 
 def test_synth_does_not_retry_http_error(monkeypatch, tmp_path):
-    """400 gibi istek reddi tekrar denenmez (girdi zaten gecersiz)."""
+    """A request rejection such as 400 is not retried (the input is already invalid)."""
     calls = []
 
     def fake_post(url, payload, timeout=300):
@@ -236,7 +236,7 @@ def test_synth_does_not_retry_http_error(monkeypatch, tmp_path):
 
 
 def test_run_survives_mid_stream_reset(monkeypatch, tmp_path):
-    """LLM akisi ortasinda koparsa eldeki cumleler soylenir, durum ozete yazilir."""
+    """If the LLM stream breaks mid-way, the sentences in hand are spoken and the state goes to the summary."""
     _FakeTTS.requests = []
     tts = _serve(_FakeTTS)
 
@@ -259,18 +259,18 @@ def test_run_survives_mid_stream_reset(monkeypatch, tmp_path):
 
 
 def test_run_records_failed_sentence_without_dropping_turn(monkeypatch, tmp_path):
-    """Tek cumlenin TTS'i patlarsa tur tumuyle dusmez; hangi cumle oldugu kaydedilir."""
+    """If TTS fails for a single sentence the whole turn does not fail; which sentence it was is recorded."""
     def fake_deltas(*a, **k):
         yield ("first", "content")
         yield ("content", "Birinci cumle. Ikinci cumle.")
 
     def boom(*a, **k):
-        raise RuntimeError("TTS basarisiz: olmadi")
+        raise RuntimeError("TTS failed: it did not work")
 
     monkeypatch.setattr(ls, "iter_deltas", fake_deltas)
     monkeypatch.setattr(ls, "synth", boom)
     out = ls.run("selam", "http://x", "http://y", str(tmp_path), prefix="f_", play=False)
 
-    assert out["ok"] is False                      # hicbir ses uretilemedi
+    assert out["ok"] is False                      # no audio could be produced
     assert [f["index"] for f in out["failed_sentences"]] == [1, 2]
     assert out["failed_sentences"][0]["text"] == "Birinci cumle."

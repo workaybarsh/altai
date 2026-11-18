@@ -1,140 +1,148 @@
-# Altai — local AI chatbot assistant (yerel sesli yapay zekâ sohbet asistanı, Windows)
+# Altai — local AI chatbot assistant (on-device voice assistant for Windows)
 
-**Altai**, Windows'ta gerçek zamanlı, **tamamen yerel** ve yapay zekâ destekli **sesli** sohbet
-asistanıdır: mikrofonla konuşursun, asistan **sesle** yanıt verir.
+**Altai** is a real-time, **fully local**, AI-powered **voice** chat assistant for Windows:
+you speak into the microphone and the assistant answers **out loud**.
 
-> Bu depo ağırlıklı olarak **plandır**; ilk çalışan araç olarak
-> `agent/mtp_inject.py` (MTP başlığı enjeksiyonu) eklenmiştir.
+> This repository is primarily a **plan**; the first working tool added was
+> `agent/mtp_inject.py` (MTP header injection).
 >
-> Depo: `github.com/workaybarsh/altai` — eski ad `aybars_speaks`; eski bağlantılar GitHub
-> yönlendirmesiyle çalışmaya devam eder (karar #25).
+> Repository: `github.com/workaybarsh/altai` — former name `aybars_speaks`; old links keep
+> working through GitHub redirects (decision #25).
 
-## Durum
+## Status
 
-**Taslak (planlama) — `v0.2-plan`. Çalışan araçlar: `agent/mtp_inject.py`, `agent/asr-tools.py`,
-`agent/tts-tools.py`, `agent/pipeline.ps1` (uçtan uca ASR→LLM→toplu TTS) ve **akışlı hat**
-`agent/llm-stream.py` + `agent/pipeline-stream.ps1` (ilk cümle oluşur oluşmaz TTS, ilke #7).**
+**Draft (planning) — `v0.2-plan`. Working tools: `agent/mtp_inject.py`, `agent/asr-tools.py`,
+`agent/tts-tools.py`, `agent/pipeline.ps1` (end-to-end ASR→LLM→batch TTS) and the **streaming
+pipeline** `agent/llm-stream.py` + `agent/pipeline-stream.ps1` (TTS as soon as the first sentence
+exists, principle #7).**
 
 
-- Bu repo ağırlıklı olarak bir **tasarım/plan dokümanıdır**; çalışan araçlar `agent/` altındadır.
-- Her karar, gerekçesi ve **vazgeçilen alternatif** burada not edilir (bkz. [`docs/kararlar.md`](docs/kararlar.md)).
-- Ölçüm ve AR-GE sonuçları geldikçe aynı belgeler güncellenir.
-- ⚠️ **Ölçüldü (2026-10-17/18): tek gerçek darboğaz artık STT.**
-  STT `large-v3-turbo` CPU'da ~10 sn (q5_0, encoder 30 sn penceresi); `base`/`small` hızlı ama
-  Türkçe doğruluğu zayıf. **TTS tarafı çözüldü:** akışlı hat + **Piper** (CPU, RTF 0,19, geri-çevirim
-  WER 0,000) ile **ilk ses (LLM+TTS) 0,77–0,90 sn** (Chatterbox 4,2–7,6 sn). Uçtan uca (ASR + Piper)
-  **~11,7 sn** → kalan darboğaz **ASR (~%85)**. Ayrıntı: [`docs/akishli-hat.md`](docs/akishli-hat.md) §5,
-  [`docs/faz2-sonuc.md`](docs/faz2-sonuc.md), [`docs/kararlar.md`](docs/kararlar.md) #19/#22.
+- This repository is primarily a **design/plan document**; the working tools live under `agent/`.
+- Every decision, its rationale and the **rejected alternative** are recorded here (see
+  [`docs/decisions.md`](docs/decisions.md)).
+- The same documents are updated as measurements and R&D results come in.
+- ⚠️ **Measured (2026-10-17/18): the only real bottleneck is now STT.**
+  STT `large-v3-turbo` takes ~10 s on CPU (q5_0, 30 s encoder window); `base`/`small` are fast but
+  weak on Turkish. **The TTS side is solved:** streaming pipeline + **Piper** (CPU, RTF 0.19,
+  round-trip WER 0.000) brings **first audio (LLM+TTS) to 0.77–0.90 s** (Chatterbox 4.2–7.6 s).
+  End to end (ASR + Piper) **~11.7 s** → the remaining bottleneck is **ASR (~85%)**. Details:
+  [`docs/streaming-pipeline.md`](docs/streaming-pipeline.md) §5,
+  [`docs/phase2-results.md`](docs/phase2-results.md), [`docs/decisions.md`](docs/decisions.md) #19/#22.
 
-## Hedef
+## Goal
 
-Kullanıcı konuşmayı bitirdikten sonra **1 saniye içinde** ilk sesin çıkması.
+The first audio must come out **within 1 second** after the user stops speaking.
 
-- **t₀** = kullanıcının son sözcüğü bittiği an
-- **t₁** = ilk sesin hoparlörden çıktığı an
-- **Hedef:** `t₁ − t₀ < 1000 ms`
+- **t₀** = the moment the user's last word ends
+- **t₁** = the moment the first audio leaves the speaker
+- **Target:** `t₁ − t₀ < 1000 ms`
 
-Ölçü, metnin ekranda görünmesi değil **sesin başlaması**dır. Ayrıntılı bütçe: [`docs/mimari.md`](docs/mimari.md).
+The metric is **when the audio starts**, not when text appears on screen. Detailed budget:
+[`docs/architecture.md`](docs/architecture.md).
 
-## Bir paragrafta ürün
+## The product in one paragraph
 
-Tek bir WinForms penceresinde, kullanıcı mikrofonla konuşur; uygulama konuşmayı yazıya çevirir
-(**whisper.cpp**), yerel dil modeline verir (**Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** — imatrix
-quant; **MTP daima açık**) ve yanıtı sesli okur (TTS). Tamamı çevrimdışı, hiçbir veri dışarı çıkmaz.
-Bas-konuş ve sürekli dinleme (VAD) modları vardır.
+In a single WinForms window the user speaks into the microphone; the application transcribes the
+speech (**whisper.cpp**), passes it to a local language model
+(**Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** — imatrix quant; **MTP always on**) and reads the
+answer out loud (TTS). Everything is offline; no data leaves the machine. Push-to-talk and
+continuous listening (VAD) modes are available.
 
-## Özet mimari
+## Architecture at a glance
 
-**Ana kural: GPU'da yalnızca dil modeli çalışır; STT ve TTS CPU'da çalışır.**
+**Main rule: only the language model runs on the GPU; STT and TTS run on the CPU.**
 
 ```
-Mikrofon → VAD/kayıt → whisper.cpp (CPU) → metin
-        → Huihui-Qwen3.5-9B (GPU, MTP) → yanıt metni
-        → TTS (CPU) → hoparlör
+Microphone → VAD/record → whisper.cpp (CPU) → text
+           → Huihui-Qwen3.5-9B (GPU, MTP) → response text
+           → TTS (CPU) → speaker
 ```
 
-| Bileşen | Nerede | Neden |
+| Component | Where | Why |
 |---|---|---|
-| **Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** + MTP | **GPU (8 GB)** | Yerel imatrix quant (~6,6 GB); boyut/kalite dengesi iyi; yerleşik kalır |
-| **whisper.cpp** (`large-v3-turbo`) | **CPU** | GPU'yu LLM'e bırakır; Türkçe + çok dilli, CPU'da hızlı, olgun C/C++ ekosistem |
-| TTS (Piper / Chatterbox / VoxCPM / SAPI) | **CPU** | VRAM'e dokunmaz; takas edilebilir katman (VoxCPM/Trendyol ağır → çevrimdışı) |
+| **Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** + MTP | **GPU (8 GB)** | Local imatrix quant (~6.6 GB); good size/quality balance; stays resident |
+| **whisper.cpp** (`large-v3-turbo`) | **CPU** | Leaves the GPU to the LLM; Turkish + multilingual, fast on CPU, mature C/C++ ecosystem |
+| TTS (Piper / Chatterbox / VoxCPM / SAPI) | **CPU** | Does not touch VRAM; swappable layer (VoxCPM/Trendyol is heavy → offline) |
 
-Bu projenin ayrı olmasının sebebi: mevcut çalışmada (MamidLabs) ComfyUI, OCR, mmproj gibi başka VRAM
-tüketicileri var. Burada **tek sahipli** bir hat kurulur.
+The reason this project is separate: the existing work (MamidLabs) has other VRAM consumers such as
+ComfyUI, OCR and mmproj. Here a **single-owner** pipeline is built.
 
-## Kesin kurallar
+## Hard rules
 
-- **STT: whisper.cpp.** Varsayılan model **large-v3-turbo**; hız gerekirse `medium`/`small`'a inilir.
+- **STT: whisper.cpp.** Default model **large-v3-turbo**; drop to `medium`/`small` when speed
+  demands it.
 - **Model: Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** (GGUF, imatrix quant).
-  Kaynak: `mradermacher/Huihui-Qwen3.5-9B-abliterated-i1-GGUF`; taban: `huihui-ai/Huihui-Qwen3.5-9B-abliterated`.
-  Dosya: `Huihui-Qwen3.5-9B-abliterated.i1-Q5_K_M.gguf` (~6,6 GB). MTP başlığı `mtp_inject.py` ile eklenir.
-- **MTP daima açık.** `--spec-type draft-mtp`; kapatılmaz. Hız + kayıpsız çıktı.
-  Quant GGUF MTP başlığını **içermez**; `mtp_inject.py` ile taban `huihui-ai` deposundan geri
-  eklenir (kaynak tensorlar doğrulandı). Doğrulama + kabul testleri: [`docs/mtp-dogrulama.md`](docs/mtp-dogrulama.md).
-- **GPU yalnızca LLM'e aittir.** STT ve TTS CPU'da; dil modeli yerleşik kalır, boşaltılmaz.
+  Source: `mradermacher/Huihui-Qwen3.5-9B-abliterated-i1-GGUF`; base: `huihui-ai/Huihui-Qwen3.5-9B-abliterated`.
+  File: `Huihui-Qwen3.5-9B-abliterated.i1-Q5_K_M.gguf` (~6.6 GB). The MTP header is added by `mtp_inject.py`.
+- **MTP is always on.** `--spec-type draft-mtp`; it is never disabled. Speed with lossless output.
+  The quant GGUF does **not** contain the MTP header; `mtp_inject.py` re-adds it from the base
+  `huihui-ai` repository (source tensors verified). Verification + acceptance tests:
+  [`docs/mtp-verification.md`](docs/mtp-verification.md).
+- **The GPU belongs to the LLM only.** STT and TTS run on the CPU; the language model stays
+  resident and is never evicted.
 
-## Teknoloji kararları (özet)
+## Technology decisions (summary)
 
-| Konu | Karar |
+| Topic | Decision |
 |---|---|
-| Yığın | PowerShell 7 + WinForms |
-| Etkileşim | Bas-konuş **ve** sürekli dinleme (ayardan seçilir) |
+| Stack | PowerShell 7 + WinForms |
+| Interaction | Push-to-talk **and** continuous listening (selected in settings) |
 | STT | **whisper.cpp** (`large-v3-turbo`; CPU) |
-| LLM | **Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** (imatrix), **MTP daima açık**, GPU'da yerleşik |
-| TTS | Takas edilebilir: Chatterbox v3 (EN) / Trendyol-TTS `voxcpm` (TR, ağır → çevrimdışı) / Piper (hızlı) / SAPI |
-| Dil | Türkçe + İngilizce (iki sürüm) |
-| Kullanım | Kişisel / açık kaynak (**MIT**) |
-| Hedef gecikme | < 1 sn |
+| LLM | **Huihui-Qwen3.5-9B-abliterated i1-Q5_K_M** (imatrix), **MTP always on**, resident on the GPU |
+| TTS | Swappable: Chatterbox v3 (EN) / Trendyol-TTS `voxcpm` (TR, heavy → offline) / Piper (fast) / SAPI |
+| Language | Turkish + English (two versions) |
+| Usage | Personal / open source (**MIT**) |
+| Target latency | < 1 s |
 
-Tüm kararlar: [`docs/kararlar.md`](docs/kararlar.md).
+All decisions: [`docs/decisions.md`](docs/decisions.md).
 
-## Çalışan ilk araç: MTP enjeksiyonu
+## The first working tool: MTP injection
 
-Quant GGUF, MTP/`nextn` başlığını **içermez**; bu yüzden `--spec-type draft-mtp` tek başına
-llama.cpp'yi açmaz. `agent/mtp_inject.py` başlığı taban `huihui-ai` deposundan geri ekler (kayıpsız;
-yalnızca 15 MTP tensoru, ana ağırlıklara dokunmaz).
+The quant GGUF does **not** include the MTP/`nextn` header; that is why `--spec-type draft-mtp`
+alone does not start llama.cpp. `agent/mtp_inject.py` re-adds the header from the base `huihui-ai`
+repository (lossless; only 15 MTP tensors, the main weights are untouched).
 
 ```powershell
-# Durum denetimi
-pwsh -File scripts/mtp-dogrula.ps1 -Gguf "models\Huihui-Qwen3.5-9B-abliterated.i1-Q5_K_M.gguf"
+# Status check
+pwsh -File scripts/mtp-verify.ps1 -Gguf "models\Huihui-Qwen3.5-9B-abliterated.i1-Q5_K_M.gguf"
 
-# Eksikse enjekte et
-pwsh -File scripts/mtp-dogrula.ps1 -Gguf "models\Huihui-Qwen3.5-9B-abliterated.i1-Q5_K_M.gguf" -Inject
+# Inject if missing
+pwsh -File scripts/mtp-verify.ps1 -Gguf "models\Huihui-Qwen3.5-9B-abliterated.i1-Q5_K_M.gguf" -Inject
 ```
 
-Ayrıntı, kabul testleri (T1–T7) ve yedekler: [`docs/mtp-dogrulama.md`](docs/mtp-dogrulama.md).
+Details, acceptance tests (T1–T7) and backups: [`docs/mtp-verification.md`](docs/mtp-verification.md).
 
-## Faz planı
+## Phase plan
 
-| Faz | İçerik | Durum |
+| Phase | Content | Status |
 |---|---|---|
-| 0 | Kararlar | ✅ |
-| 1 | Mimari + gecikme bütçesi | 🔄 |
-| 2 | STT (whisper.cpp) hattı + < 1 sn ölçümü | ⬜ |
+| 0 | Decisions | ✅ |
+| 1 | Architecture + latency budget | 🔄 |
+| 2 | STT (whisper.cpp) pipeline + < 1 s measurement | ⬜ |
 | 3 | LLM (9B i1-Q5_K_M + MTP) + prefix cache | ⬜ |
-| 4 | TTS katmanı | ⬜ |
-| 5 | WinForms arayüz + PTT/VAD + barge-in | ⬜ |
-| 6 | TR/ENG sürümler + paketleme | ⬜ |
+| 4 | TTS layer | ⬜ |
+| 5 | WinForms UI + PTT/VAD + barge-in | ⬜ |
+| 6 | TR/ENG versions + packaging | ⬜ |
 
-**Faz 2 neden ilk?** `<1 sn` hedefinin kaderi STT'de belirlenir; whisper.cpp'nin CPU hızı
-orada ölçülür (`large-v3-turbo` yeterli mi, `medium`/`small`'a mı inilmeli).
+**Why phase 2 first?** The fate of the `<1 s` target is decided in STT; that is where whisper.cpp's
+CPU speed is measured (whether `large-v3-turbo` suffices, or `medium`/`small` is needed).
 
-## Dokümanlar
+## Documents
 
-| Yol | İçerik |
+| Path | Content |
 |---|---|
-| [`docs/mimari.md`](docs/mimari.md) | Mimari, veri akışı, tur dizisi, sorumluluk tablosu, gecikme bütçesi |
-| [`docs/mtp-dogrulama.md`](docs/mtp-dogrulama.md) | MTP doğrulama + enjeksiyon planı (kabul testleri, yedekler) |
-| [`docs/faz2-olcum-plani.md`](docs/faz2-olcum-plani.md) | Faz 2: whisper.cpp hattı ve `<1 sn` ölçüm planı |
-| [`docs/faz2-sonuc.md`](docs/faz2-sonuc.md) | Faz 2 ölçüm sonuçları (duman testi kaydı) |
-| [`docs/tts-tr-sonuc.md`](docs/tts-tr-sonuc.md) | Türkçe TTS (Trendyol-TTS) değerlendirmesi: VRAM, RTF, geri-çevirim WER |
-| [`docs/tts-kiyaslama.md`](docs/tts-kiyaslama.md) | Türkçe TTS kıyası (Chatterbox vs CosyVoice/OmniVoice/VoxCPM2/VITS; arXiv:2610.06057) |
-| [`docs/akishli-hat.md`](docs/akishli-hat.md) | Akışlı hat: tasarım, kullanım, ölçüm (ilk ses 18,8 → 7,05–7,60 sn) ve sınırlar |
-| [`docs/kararlar.md`](docs/kararlar.md) | Karar günlüğü |
-| [`AGENTS.md`](AGENTS.md) | Geliştirici/ajan altyapı rehberi |
+| [`docs/architecture.md`](docs/architecture.md) | Architecture, data flow, turn sequence, responsibility table, latency budget |
+| [`docs/mtp-verification.md`](docs/mtp-verification.md) | MTP verification + injection plan (acceptance tests, backups) |
+| [`docs/phase2-measurement-plan.md`](docs/phase2-measurement-plan.md) | Phase 2: whisper.cpp pipeline and the `<1 s` measurement plan |
+| [`docs/phase2-results.md`](docs/phase2-results.md) | Phase 2 measurement results (smoke-test record) |
+| [`docs/tts-tr-results.md`](docs/tts-tr-results.md) | Turkish TTS (Trendyol-TTS) evaluation: VRAM, RTF, round-trip WER |
+| [`docs/tts-benchmark.md`](docs/tts-benchmark.md) | Turkish TTS comparison (Chatterbox vs CosyVoice/OmniVoice/VoxCPM2/VITS; arXiv:2610.06057) |
+| [`docs/streaming-pipeline.md`](docs/streaming-pipeline.md) | Streaming pipeline: design, usage, measurement (first audio 18.8 → 7.05–7.60 s) and limits |
+| [`docs/decisions.md`](docs/decisions.md) | Decision log |
+| [`AGENTS.md`](AGENTS.md) | Developer/agent infrastructure guide |
 
-## Lisans
+## License
 
-Bu proje **MIT** lisansıyla yayımlanır — bkz. [`LICENSE`](LICENSE) (karar #24). Üçüncü taraf bileşenler
-kendi lisanslarını korur: whisper.cpp MIT; LLM Llama/Qwen türevi; Chatterbox MIT; Trendyol-TTS/VoxCPM2 MIT;
-Piper GPL-3.0 (yalnızca ayrı araç olarak çağrılır).
+This project is released under the **MIT** license — see [`LICENSE`](LICENSE) (decision #24).
+Third-party components keep their own licenses: whisper.cpp MIT; LLM Llama/Qwen derivative;
+Chatterbox MIT; Trendyol-TTS/VoxCPM2 MIT; Piper GPL-3.0 (invoked only as a separate tool).

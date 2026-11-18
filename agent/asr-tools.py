@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-"""asr-tools.py -- whisper.cpp cikarim araci (Altai, Faz 2 iskeleti).
+"""asr-tools.py -- whisper.cpp inference tool (Altai, Phase 2 skeleton).
 
-Gorev:
-  1. Ses dosyasini (gerekirse) 16 kHz mono WAV'a cevirir.
-  2. whisper.cpp (`whisper-cli`) ile yaziya cevirir.
-  3. Gecikme ve RTF olcumlerini JSON olarak dondurur.
+Task:
+  1. Converts the audio file (if needed) to 16 kHz mono WAV.
+  2. Transcribes it with whisper.cpp (`whisper-cli`).
+  3. Returns latency and RTF measurements as JSON.
 
-Model/binary yoksa durustce `ok=false` doner (uydurmaz). Sozlesme JSON'dur.
+If the model/binary is missing, it honestly returns `ok=false` (it does not make
+things up). The contract is JSON.
 
-Kullanim:
-  python agent/asr-tools.py --wav girdi.wav --model models/ggml-large-v3-turbo-q5_0.bin
+Usage:
+  python agent/asr-tools.py --wav input.wav --model models/ggml-large-v3-turbo-q5_0.bin
   python agent/asr-tools.py --dir tests/assets --model ... --repeat 10 --out logs/asr.json
-  python agent/asr-tools.py --wav girdi.wav --server-url http://127.0.0.1:8081   # model bellekte
+  python agent/asr-tools.py --wav input.wav --server-url http://127.0.0.1:8081   # model in memory
 
-Cikti (stdout, JSON):
+Output (stdout, JSON):
   {
     "ok": true,
     "whisper": "...", "model": "...", "language": "tr", "threads": 6, "repeat": 1,
@@ -24,11 +25,12 @@ Cikti (stdout, JSON):
     "stats": {"median_asr": 0.31, "p95_asr": 0.35, "mean_rtf": 0.074, "median_infer": 0.28}
   }
 
-Notlar:
-  - `asr_seconds` = uctan uca duvar suresi (model yukleme dahil).
-  - `infer_seconds` = whisper.cpp encode+decode (model yukleme HARIC) -- kisa seslerde
-    RTF'i dogru okumak icin. Tek-atim surec her cagride modeli yeniden yukler.
-  - `--threads` verilmezse mantiksal cekirdek sayisi kullanilir (whisper varsayilani 4).
+Notes:
+  - `asr_seconds` = end-to-end wall time (including model load).
+  - `infer_seconds` = whisper.cpp encode+decode (EXCLUDING model load) -- so that the
+    RTF reads correctly on short audio. The single-shot process reloads the model on
+    every call.
+  - if `--threads` is not given, the logical core count is used (whisper default is 4).
 """
 from __future__ import annotations
 
@@ -45,38 +47,38 @@ DEFAULT_WHISPER = "whisper-cli"
 DEFAULT_TMP = os.path.join("logs", "asr-tmp")
 
 
-# ---------------------------------------------------------------- saf yardimcilar
+# ---------------------------------------------------------------- pure helpers
 
 def audio_seconds(path: str) -> float:
-    """WAV dosyasinin sure saniyesi."""
+    """Duration of a WAV file in seconds."""
     with wave.open(path, "rb") as w:
         rate = w.getframerate() or 1
         return w.getnframes() / float(rate)
 
 
 def compute_rtf(asr_seconds: float, audio_sec: float) -> float:
-    """Gercek zaman carpani = islem suresi / ses suresi."""
+    """Real-time factor = processing time / audio duration."""
     if audio_sec <= 0:
         return float("inf")
     return asr_seconds / audio_sec
 
 
 def default_threads() -> int:
-    """Varsayilan thread sayisi = **mantiksal** cekirdek sayisi.
+    """Default thread count = **logical** core count.
 
-    Olculdu (Ryzen 5 3600, 6C/12T, large-v3-turbo): q5_0 ile `-t 12` (10,0 sn) <
-    `-t 6` (13,1 sn) < whisper varsayilani `-t 4` (20,9 sn, f16). Yani bu makinede
-    SMT kazanc sagliyor; genel kural "fiziksel cekirdek" olsa da olcumle dogrulanmali
-    (AGENTS tuzak #9). `--threads` ile acikca gecersiz kilinabilir.
+    Measured (Ryzen 5 3600, 6C/12T, large-v3-turbo): with q5_0, `-t 12` (10.0 s) <
+    `-t 6` (13.1 s) < whisper default `-t 4` (20.9 s, f16). So SMT does help on this
+    machine; although the general rule is "physical core", it must be verified by
+    measurement (AGENTS pitfall #9). Can be overridden explicitly with `--threads`.
     """
     return max(1, os.cpu_count() or 1)
 
 
 def parse_whisper_timings(stderr: str) -> dict:
-    """whisper.cpp `whisper_print_timings:` satirlarini (ms) saniyeye cevirir.
+    """Converts whisper.cpp `whisper_print_timings:` lines (ms) to seconds.
 
-    Amac: **model yukleme** ile **gercek cikarim**i ayirmak. Tek-atim sureci her
-    cagrida modeli yeniden yukler; bu, kisa seslerde RTF'i sisirir.
+    Goal: separate **model loading** from **actual inference**. The single-shot
+    process reloads the model on every call; that inflates the RTF on short audio.
     """
     import re
 
@@ -94,7 +96,7 @@ def parse_whisper_timings(stderr: str) -> dict:
 
 
 def percentile(values, p: float):
-    """Lineer interpolasyonlu yuzdelik (p: 0..1). Bos ise None."""
+    """Percentile with linear interpolation (p: 0..1). None if empty."""
     vals = sorted(v for v in values if v is not None)
     if not vals:
         return None
@@ -108,7 +110,7 @@ def percentile(values, p: float):
 
 
 def build_whisper_command(whisper_exe, model, wav, language="tr", threads=None, extra=None):
-    """whisper.cpp komut satirini kurar (test edilebilir, yan etkisiz)."""
+    """Builds the whisper.cpp command line (testable, side-effect free)."""
     cmd = [whisper_exe, "-m", model, "-f", wav, "-l", language or "auto", "-nt"]
     if threads:
         cmd += ["-t", str(int(threads))]
@@ -118,7 +120,7 @@ def build_whisper_command(whisper_exe, model, wav, language="tr", threads=None, 
 
 
 def find_whisper(explicit: str | None = None):
-    """whisper.cpp ikilisini bulur (verilen yol, PATH, yaygin adlar)."""
+    """Finds the whisper.cpp binary (given path, PATH, common names)."""
     if explicit:
         if os.path.sep in explicit or (os.altsep and os.altsep in explicit):
             return explicit if os.path.exists(explicit) else None
@@ -138,24 +140,27 @@ def find_ffmpeg(explicit: str | None = None):
     return shutil.which("ffmpeg")
 
 
-# ---------------------------------------------------------------- ses hatti
+# ---------------------------------------------------------------- audio path
 
 def to_wav_16k_mono(src: str, dst: str, ffmpeg: str = "ffmpeg"):
-    """ffmpeg ile 16 kHz mono PCM WAV'a cevirir. (yol, hata) doner."""
+    """Converts to 16 kHz mono PCM WAV with ffmpeg. Returns (path, error)."""
     exe = find_ffmpeg(ffmpeg)
     if not exe:
-        return None, "ffmpeg bulunamadi (16 kHz mono donusum gerekli)"
+        return None, "ffmpeg not found (16 kHz mono conversion is required)"
     os.makedirs(os.path.dirname(os.path.abspath(dst)), exist_ok=True)
     cmd = [exe, "-y", "-i", src, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", dst]
     proc = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
     if proc.returncode != 0 or not os.path.exists(dst):
         tail = "\n".join((proc.stderr or "").strip().splitlines()[-3:])
-        return None, f"ffmpeg hatasi: {tail}"
+        return None, f"ffmpeg error: {tail}"
     return dst, None
 
 
 def prepare_wav(src: str, workdir: str, ffmpeg: str = "ffmpeg"):
-    """Zaten 16 kHz mono ise dokunmaz; degilse donusturur. (yol, hata) doner."""
+    """Leaves the file untouched if it is already 16 kHz mono; otherwise converts it.
+
+    Returns (path, error).
+    """
     try:
         with wave.open(src, "rb") as w:
             if w.getframerate() == 16000 and w.getnchannels() == 1:
@@ -168,18 +173,19 @@ def prepare_wav(src: str, workdir: str, ffmpeg: str = "ffmpeg"):
 
 
 def transcribe_once(whisper_exe, model, wav, language="tr", threads=None, extra=None):
-    """Tek cikarim; sure ve metni olcer.
+    """Single inference; measures duration and text.
 
-    `asr_seconds` = uctan uca duvar suresi (model yukleme dahil). whisper.cpp
-    zamanlama satirlari ayristirilirsa `load_seconds` / `encode_seconds` / `decode_seconds`
-    ile **yuklemesiz cikarim** (`infer_seconds`) de raporlanir (kisa seslerde RTF sisirmesini onler).
+    `asr_seconds` = end-to-end wall time (including model load). If the whisper.cpp
+    timing lines can be parsed, **inference without loading** (`infer_seconds`) is also
+    reported along with `load_seconds` / `encode_seconds` / `decode_seconds` (prevents
+    RTF inflation on short audio).
     """
     cmd = build_whisper_command(whisper_exe, model, wav, language, threads, extra)
     t0 = time.perf_counter()
     proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     dt = time.perf_counter() - t0
     if proc.returncode != 0:
-        raise RuntimeError(f"whisper cikis kodu {proc.returncode}: {(proc.stderr or '').strip()[:400]}")
+        raise RuntimeError(f"whisper exit code {proc.returncode}: {(proc.stderr or '').strip()[:400]}")
     audio = audio_seconds(wav)
     res = {
         "text": (proc.stdout or "").strip(),
@@ -195,10 +201,10 @@ def transcribe_once(whisper_exe, model, wav, language="tr", threads=None, extra=
 
 
 def transcribe_server(server_url, wav, language="tr", timeout=600):
-    """whisper-server (`/inference`) uzerinden yaziya cevirir.
+    """Transcribes through whisper-server (`/inference`).
 
-    Model sunucuda **yuklu kalir**; bu yuzden `asr_seconds` = saf cikarim (yukleme yok).
-    Harici bagimlilik kullanmaz (urllib ile multipart).
+    The model **stays loaded** on the server; therefore `asr_seconds` = pure inference
+    (no loading). Uses no external dependency (multipart with urllib).
     """
     import urllib.request
     import uuid
@@ -247,7 +253,7 @@ def transcribe_server(server_url, wav, language="tr", timeout=600):
 
 
 def transcribe(whisper_exe, model, wav, language="tr", threads=None, extra=None, server_url=None):
-    """Cikarim yonlendiricisi: sunucu verilirse whisper-server, yoksa tek-atim whisper-cli."""
+    """Inference router: whisper-server if a server URL is given, otherwise single-shot whisper-cli."""
     if server_url:
         return transcribe_server(server_url, wav, language)
     return transcribe_once(whisper_exe, model, wav, language, threads, extra)
@@ -300,43 +306,43 @@ def _emit(payload: dict, out_path: str | None):
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="whisper.cpp cikarim + gecikme olcumu (Faz 2)")
+    ap = argparse.ArgumentParser(description="whisper.cpp inference + latency measurement (Phase 2)")
     src = ap.add_mutually_exclusive_group(required=True)
-    src.add_argument("--wav", help="tek ses dosyasi")
-    src.add_argument("--dir", help="ses dosyalari klasoru")
+    src.add_argument("--wav", help="single audio file")
+    src.add_argument("--dir", help="folder of audio files")
     ap.add_argument("--model", default=None,
-                    help="whisper.cpp model dosyasi (.bin); --server-url verilirse gerekmez")
-    ap.add_argument("--whisper", default=None, help="whisper-cli yolu (varsayilan: PATH)")
+                    help="whisper.cpp model file (.bin); not needed if --server-url is given")
+    ap.add_argument("--whisper", default=None, help="path to whisper-cli (default: PATH)")
     ap.add_argument("--server-url", default=None,
-                    help="whisper-server taban URL (or. http://127.0.0.1:8081); verilirse model bellekte kalir")
+                    help="whisper-server base URL (e.g. http://127.0.0.1:8081); if given, the model stays in memory")
     ap.add_argument("--ffmpeg", default="ffmpeg")
     ap.add_argument("--lang", default="tr")
     ap.add_argument("--threads", type=int, default=None,
-                    help="whisper.cpp -t degeri (varsayilan: mantiksal cekirdek sayisi)")
+                    help="whisper.cpp -t value (default: logical core count)")
     ap.add_argument("--repeat", type=int, default=1)
-    ap.add_argument("--out", default=None, help="JSON cikti dosyasi")
-    ap.add_argument("--tmp", default=DEFAULT_TMP, help="donusum icin gecici klasor")
+    ap.add_argument("--out", default=None, help="JSON output file")
+    ap.add_argument("--tmp", default=DEFAULT_TMP, help="temporary folder for conversion")
     args = ap.parse_args(argv)
 
     if args.server_url:
-        whisper = args.server_url          # sunucu modu: ikili gerekmez
+        whisper = args.server_url          # server mode: no binary needed
     else:
         whisper = find_whisper(args.whisper)
         if not whisper:
-            _emit({"ok": False, "error": "whisper.cpp ikilisi bulunamadi",
-                   "ipucu": "whisper-cli'yi PATH'e ekle ya da --whisper ver",
-                   "beklenen": DEFAULT_WHISPER}, args.out)
+            _emit({"ok": False, "error": "whisper.cpp binary not found",
+                   "hint": "add whisper-cli to PATH or pass --whisper",
+                   "expected": DEFAULT_WHISPER}, args.out)
             return 3
         if not args.model or not os.path.exists(args.model):
-            _emit({"ok": False, "error": f"model bulunamadi: {args.model}"}, args.out)
+            _emit({"ok": False, "error": f"model not found: {args.model}"}, args.out)
             return 3
 
-    # thread: verilmezse mantiksal cekirdek sayisi (whisper varsayilani 4; olcumle ayarlanir)
+    # threads: logical core count if not given (whisper default is 4; tuned by measurement)
     threads = args.threads if (args.threads and args.threads > 0) else default_threads()
 
     files = collect_wavs(args.wav or args.dir)
     if not files:
-        _emit({"ok": False, "error": "ses dosyasi bulunamadi"}, args.out)
+        _emit({"ok": False, "error": "no audio files found"}, args.out)
         return 4
 
     results, errors = [], []
@@ -348,7 +354,7 @@ def main(argv=None) -> int:
         try:
             results.append(benchmark_file(whisper, args.model, wav, args.lang,
                                           threads, args.repeat, server_url=args.server_url))
-        except Exception as exc:  # cikarim hatasi turu durdurmaz
+        except Exception as exc:  # an inference error does not abort the run
             errors.append({"file": f, "error": str(exc)})
 
     asr_all = [r["median_asr"] for r in results if r["median_asr"] is not None]

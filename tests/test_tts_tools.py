@@ -1,4 +1,4 @@
-"""tts-tools.py'nin saf (cevrimdisi) davranislarini dogrular."""
+"""Verifies the pure (offline) behaviour of tts-tools.py."""
 import importlib.util
 import json
 import os
@@ -31,7 +31,7 @@ def test_missing_piper_reports_error(tmp_path, capsys):
 def test_sapi_synthesizes_on_windows(tmp_path, capsys):
     if os.name != "nt":
         import pytest
-        pytest.skip("SAPI yalnizca Windows")
+        pytest.skip("SAPI is Windows only")
     out = tmp_path / "sapi.wav"
     code = tts.main(["--backend", "sapi", "--text", "Merhaba dunya", "--out", str(out)])
     payload = json.loads(capsys.readouterr().out)
@@ -42,14 +42,14 @@ def test_sapi_synthesizes_on_windows(tmp_path, capsys):
 
 
 def test_voxcpm_missing_dependency_reports_error(tmp_path, capsys):
-    """voxcpm kurulu degilse durustce ok=false doner (agir model indirmeyi tetiklemez)."""
+    """If voxcpm is not installed, returns ok=false honestly (does not trigger a heavy model download)."""
     import pytest
     try:
         import voxcpm  # noqa: F401
     except Exception:
         pass
     else:
-        pytest.skip("voxcpm kurulu; agir model yuklemeyi tetiklememek icin atlanir")
+        pytest.skip("voxcpm is installed; skipped to avoid triggering a heavy model load")
     out = tmp_path / "v.wav"
     code = tts.main(["--backend", "voxcpm", "--text", "merhaba", "--out", str(out)])
     payload = json.loads(capsys.readouterr().out)
@@ -67,17 +67,17 @@ def test_tr_respell_maps_s_to_sh():
 
 
 def test_tr_softg_turkish_rules():
-    # iki unlu arasi -> 'y'
+    # between two vowels -> 'y'
     assert tts.tr_softg("değil") == "deyil"
     assert tts.tr_softg("ağaç") == "ayaç"
     assert tts.tr_softg("kağıt") == "kayıt"
-    # unluden sonra onsoz/son -> onceki unlu uzatilir (Turkce'de ğ hep unluden sonra gelir)
+    # after a vowel, before a consonant/finally -> the previous vowel is lengthened (in Turkish ğ always follows a vowel)
     assert tts.tr_softg("dağ") == "daa"
     assert tts.tr_softg("yağmur") == "yaamur"
     assert tts.tr_softg("öğretmen") == "ööretmen"
     assert tts.tr_softg("mağdur") == "maadur"
     assert tts.tr_softg("iğne") == "iine"
-    # onsozden sonra (nadir/odunc) -> 'g'
+    # after a consonant (rare/loanword) -> 'g'
     assert tts.tr_softg("xğx") == "xgx"
 
 
@@ -87,15 +87,15 @@ def test_tr_softg_leaves_other_text_alone():
 
 
 def test_tr_respell_fixes_the_broken_sentence():
-    # Kulakla sikayet edilen ornek: 'çalıştığı' -> 'çalıştı ki' cikiyordu.
+    # The example complained about by ear: 'çalıştığı' came out as 'çalıştı ki'.
     src = "Tam yerel çalıştığı için cevaplarım hem hızlı hem de gizli."
     assert tts.tr_respell(src) == "Tam yerel çalıshtıyı için cevaplarım hem hızlı hem de gizli."
 
 
 def test_tr_respell_softg_can_be_disabled():
-    """A/B ve geri donus: softg=False -> eski davranis ('ş'->'sh' kalir, 'ğ' dokunulmaz)."""
+    """A/B and rollback: softg=False -> old behaviour ('ş'->'sh' stays, 'ğ' is left alone)."""
     out = tts.tr_respell("değil dağ çalıştığı", softg=False)
-    assert out == "değil dağ çalı" + "sh" + "tığı"   # 'ş' -> s+h, 'ğ' dokunulmaz
+    assert out == "değil dağ çalı" + "sh" + "tığı"   # 'ş' -> s+h, 'ğ' untouched
     assert tts.tr_respell("değil dağ", softg=True) == "deyil daa"
 
 
@@ -109,14 +109,14 @@ def test_install_tr_tokenizer_fix_keeps_precomposed():
 
     tok = tts.install_tr_tokenizer_fix(FakeTok())
     tr = tok.preprocess_text("ŞÜĞÖÇ IĞDIR", language_id="tr")
-    assert "ş" in tr and "ü" in tr and "ı" in tr          # diakritikler korunur
-    assert "\u0308" not in tr and "\u0327" not in tr      # NFKD ile ayrismaz
-    en = tok.preprocess_text("Ş", language_id="en")       # tr disi: orijinal NFKD
+    assert "ş" in tr and "ü" in tr and "ı" in tr          # diacritics are preserved
+    assert "\u0308" not in tr and "\u0327" not in tr      # does not decompose under NFKD
+    en = tok.preprocess_text("Ş", language_id="en")       # non-tr: original NFKD
     assert "\u0327" in en
 
 
 def test_synth_chatterbox_mtl_sets_language_id(monkeypatch, tmp_path):
-    """Regresyon: `uses_mtl` tanimli olmali; aksi halde chatterbox yolu NameError verirdi."""
+    """Regression: `uses_mtl` must be defined; otherwise the chatterbox path would raise NameError."""
     import sys
     import types
 
@@ -144,15 +144,15 @@ def test_synth_chatterbox_mtl_sets_language_id(monkeypatch, tmp_path):
 
     out = tmp_path / "a.wav"
     res = tts.synth_chatterbox("Çalışan şair", str(out), lang="tr", model=FakeModel())
-    assert res["language_id"] == "tr"          # MTL yolu secildi
+    assert res["language_id"] == "tr"          # the MTL path was chosen
     assert res["t3_model"] == "v3"
     assert saved["path"] == str(out)
 
 
-# ---------------------------------------------------------------- uzun-kuyruk guard
+# ---------------------------------------------------------------- long-tail guard
 
 def _stub_chatterbox(monkeypatch, durations):
-    """Chatterbox'i taklit eder: `durations` sirasiyla doner, _save_wav gercek dosya yazar."""
+    """Stubs Chatterbox: returns `durations` in order, _save_wav writes a real file."""
     import sys
     import types
 
@@ -195,28 +195,28 @@ def _stub_chatterbox(monkeypatch, durations):
 
 def test_expected_audio_and_guard_limit():
     assert tts.expected_audio_seconds("") == 0.0
-    assert tts.expected_audio_seconds("Merhaba!") == pytest.approx(0.5)   # 7 harf / 14
-    # "Merhaba!" icin sinir = max(3*0,5 ; 0,5+2,0) = 2,5 sn
+    assert tts.expected_audio_seconds("Merhaba!") == pytest.approx(0.5)   # 7 letters / 14
+    # for "Merhaba!" the limit = max(3*0.5 ; 0.5+2.0) = 2.5 s
     assert tts.audio_guard_limit("Merhaba!") == pytest.approx(2.5)
-    # uzun cumlede sinir buyur (yanlis pozitif olmasin)
+    # the limit grows for a long sentence (avoid false positives)
     assert tts.audio_guard_limit("Bugün size nasıl yardımcı olabilirim?") > 4.0
 
 
 def test_synth_chatterbox_retries_when_audio_too_long(monkeypatch, tmp_path):
-    """9,6 sn'lik 'Merhaba!' (tts_batch.json vakasi) -> yeniden uret, kisa olani tut."""
+    """A 9.6 s 'Merhaba!' (the tts_batch.json case) -> regenerate, keep the shorter one."""
     model, calls, saved = _stub_chatterbox(monkeypatch, [9.6, 0.9])
     out = tmp_path / "m.wav"
     res = tts.synth_chatterbox("Merhaba!", str(out), lang="tr", model=model)
 
-    assert calls["n"] == 2                      # bir kez daha uretildi
+    assert calls["n"] == 2                      # generated once more
     assert res["retried"] is True
     assert res["long_tail_guard"] is True
-    assert res["audio_seconds"] == pytest.approx(0.9, abs=0.01)   # kisa olan tutuldu
+    assert res["audio_seconds"] == pytest.approx(0.9, abs=0.01)   # the shorter one was kept
     assert res["first_audio_seconds"] == pytest.approx(9.6, abs=0.01)
-    assert os.path.exists(out)                  # kisa cikti asil yola tasindi
+    assert os.path.exists(out)                  # the short output was moved to the real path
     assert not os.path.exists(str(out) + ".retry.wav")
-    assert res["out"] == str(out)               # ⚠️ regresyon: yol .retry.wav'a kaymamali
-    assert res["guard_extra_seconds"] == res["tts_seconds"]   # telafi = retry uretimi
+    assert res["out"] == str(out)               # ⚠️ regression: the path must not drift to .retry.wav
+    assert res["guard_extra_seconds"] == res["tts_seconds"]   # compensation = the retry generation
 
 
 def test_synth_chatterbox_keeps_first_when_retry_longer(monkeypatch, tmp_path):
@@ -226,16 +226,16 @@ def test_synth_chatterbox_keeps_first_when_retry_longer(monkeypatch, tmp_path):
 
     assert calls["n"] == 2
     assert res["retried"] is True
-    assert res["first_audio_seconds"] == pytest.approx(9.6, abs=0.01)   # ilk deneme
-    assert res["audio_seconds"] == pytest.approx(9.6, abs=0.01)   # ilki daha kisa
+    assert res["first_audio_seconds"] == pytest.approx(9.6, abs=0.01)   # first attempt
+    assert res["audio_seconds"] == pytest.approx(9.6, abs=0.01)   # the first one is shorter
     assert res["retry_audio_seconds"] == pytest.approx(12.0, abs=0.01)
-    assert not os.path.exists(str(out) + ".retry.wav")            # gecici dosya silindi
-    assert res["out"] == str(out) and os.path.exists(res["out"])  # ilk cikti yerinde
-    assert res["guard_extra_seconds"] >= 0                        # telafi maliyeti kaydi
+    assert not os.path.exists(str(out) + ".retry.wav")            # temporary file deleted
+    assert res["out"] == str(out) and os.path.exists(res["out"])  # the first output is in place
+    assert res["guard_extra_seconds"] >= 0                        # compensation cost is recorded
 
 
 def test_synth_chatterbox_retry_result_points_to_real_file(monkeypatch, tmp_path):
-    """Her durumda `out` diskte VAR olan dosyayi gostermeli (pipeline Test-Path kullaniyor)."""
+    """In every case `out` must point to a file that EXISTS on disk (the pipeline uses Test-Path)."""
     durations = {"a": ([9.6, 0.9], True), "b": ([9.6, 12.0], True), "c": ([1.0], False)}
     for name, (durs, should_retry) in durations.items():
         model, calls, saved = _stub_chatterbox(monkeypatch, durs)
@@ -243,7 +243,7 @@ def test_synth_chatterbox_retry_result_points_to_real_file(monkeypatch, tmp_path
         res = tts.synth_chatterbox("Merhaba!", str(out), lang="tr", model=model)
         assert bool(res.get("retried", False)) is should_retry
         assert res["out"] == str(out)
-        assert os.path.exists(res["out"])           # bayat .retry.wav yolu DEGIL
+        assert os.path.exists(res["out"])           # NOT the stale .retry.wav path
 
 
 def test_synth_chatterbox_no_retry_when_normal(monkeypatch, tmp_path):
@@ -271,14 +271,14 @@ def test_server_texts_normalizes_single_and_list():
     assert tts.server_texts({"text": "tek"}) == ["tek"]
     assert tts.server_texts({"texts": ["a", " b ", ""]}) == ["a", "b"]
     assert tts.server_texts({}) == []
-    # metin olmayan oge reddedilir (bozuk girdi CUDA baglamini zehirleyebiliyor)
+    # a non-text item is rejected (malformed input can poison the CUDA context)
     import pytest as _pytest
     with _pytest.raises(ValueError):
         tts.server_texts({"texts": [{"value": "x"}]})
 
 
 def test_ensure_speakable_rejects_symbol_only():
-    """Sembol-only/emoji girdi uretime HIC gitmez (Chatterbox orada patliyordu)."""
+    """Symbol-only/emoji input NEVER reaches generation (Chatterbox used to crash there)."""
     assert tts.ensure_speakable("Merhaba") == "Merhaba"
     assert tts.ensure_speakable("3 elma") == "3 elma"
     for bad in ("", "   ", "???", "!!! ...", "\U0001f60a"):
@@ -287,7 +287,7 @@ def test_ensure_speakable_rejects_symbol_only():
 
 
 def test_tts_server_health_and_tts(monkeypatch, tmp_path):
-    """Kalici sunucu: /health ve /tts calisir (model fonksiyonlari taklit; GPU gerekmez)."""
+    """Persistent server: /health and /tts work (model functions stubbed; no GPU needed)."""
     import threading
     import types
 
@@ -316,8 +316,8 @@ def test_tts_server_health_and_tts(monkeypatch, tmp_path):
         body = json.dumps({"texts": ["bir", "iki"], "out_dir": str(tmp_path), "prefix": "s_"}).encode()
         out = _post_json(f"http://127.0.0.1:{port}/tts", body)
 
-        # Sembol-only oge: oge bazli hata (HTTP 200, ok=True cunku digeri uretildi);
-        # boylece bozuk girdi CUDA baglamini zehirlemeden partiyi dusurmez.
+        # Symbol-only item: item-level error (HTTP 200, ok=True because the other one was generated);
+        # this way malformed input neither fails the batch nor poisons the CUDA context.
         body2 = json.dumps({"texts": ["tamam", "???"], "out_dir": str(tmp_path),
                             "prefix": "x_"}).encode()
         out2 = _post_json(f"http://127.0.0.1:{port}/tts", body2)
@@ -333,12 +333,12 @@ def test_tts_server_health_and_tts(monkeypatch, tmp_path):
     assert out2["ok"] is True and out2["failed"] == 1
     bad = [r for r in out2["results"] if not r["ok"]]
     assert len(bad) == 1 and bad[0]["index"] == 2
-    assert "harf icermiyor" in bad[0]["error"]
-    assert not os.path.exists(tmp_path / "x_2.wav")   # uretilmedi
+    assert "does not contain any valid letters" in bad[0]["error"]
+    assert not os.path.exists(tmp_path / "x_2.wav")   # not generated
 
 
 def test_json_handles_emoji_without_crashing(tmp_path):
-    """LLM ciktisindaki emoji konsol kodlamasinda print'i patlatmamali (toplu modu dusururdu)."""
+    """Emoji in the LLM output must not blow up print on the console encoding (it used to drop batch mode)."""
     out = tmp_path / "j.json"
     tts._json({"ok": True, "text": "merhaba 😊 dünya"}, str(out))
     data = json.loads(out.read_text(encoding="utf-8"))
@@ -362,7 +362,7 @@ def test_batch_missing_file_reports_error(tmp_path, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert code == 2
     assert payload["ok"] is False
-    assert "bulunamadi" in payload["error"]
+    assert "not found" in payload["error"]
 
 
 def test_batch_needs_out_prefix_or_out(tmp_path, capsys):
@@ -376,9 +376,9 @@ def test_batch_needs_out_prefix_or_out(tmp_path, capsys):
 
 
 def _post_json(url, data):
-    # Windows loopback'ta olculdu: ardışık isteklerin ~%30'u WinError 10054 (RST) ile düşüyor
-    # (minimal stdlib http.server + ham socket ile de aynı → ortam kaynaklı, sunucu kodu değil).
-    # Bu yüzden testlerde cömert retry; tekrar eden istek aynı parametrelerle gider (idempotent).
+    # Measured on Windows loopback: ~30% of consecutive requests fail with WinError 10054 (RST)
+    # (same with a minimal stdlib http.server + raw socket → environment-related, not server code).
+    # Hence generous retries in tests; a repeated request goes out with the same parameters (idempotent).
     import time
     import urllib.request
     last = None
@@ -395,7 +395,7 @@ def _post_json(url, data):
 
 
 def test_tts_server_piper_dispatch(monkeypatch, tmp_path):
-    """piper sunucu modu: model bellege alinmaz; her istek synth_piper'a gider (GPU gerekmez)."""
+    """piper server mode: no model is loaded into memory; each request goes to synth_piper (no GPU needed)."""
     import threading
     import types
 
@@ -420,7 +420,7 @@ def test_tts_server_piper_dispatch(monkeypatch, tmp_path):
                                  voice_prompt=None, host="127.0.0.1", port=0,
                                  piper=str(exe), piper_model=str(model))
     srv = tts.create_server(args)
-    srv.ensure_model()          # piper icin yukleme yok, yalniz dogrulama
+    srv.ensure_model()          # no load for piper, validation only
     port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
@@ -435,8 +435,8 @@ def test_tts_server_piper_dispatch(monkeypatch, tmp_path):
     assert health["ok"] is True and health["backend"] == "piper"
     assert health["loaded"] is True and health["load_seconds"] == 0.0
     assert out["ok"] is True and out["count"] == 2 and out["failed"] == 0
-    # ⚠️ Windows loopback'ta reset olursa _post_json istegi tekrar gonderir ve ayni parti
-    # ikinci kez sentezlenir; bu yuzden siraya degil **ilk gorulme sirasina** bakilir.
+    # ⚠️ If a reset happens on Windows loopback, _post_json resends the request and the same batch
+    # is synthesised twice; so we look at the **first-seen order**, not the raw sequence.
     texts = []
     for c in calls:
         if c[0] not in texts:
@@ -447,7 +447,7 @@ def test_tts_server_piper_dispatch(monkeypatch, tmp_path):
 
 
 def test_tts_server_piper_missing_model_raises(tmp_path):
-    """piper sunucu modu: eksik ikili/ses dosyasi durust hata verir (sessiz dusmez)."""
+    """piper server mode: a missing binary/voice file gives an honest error (no silent failure)."""
     import types
 
     args = types.SimpleNamespace(backend="piper", lang="tr", device="cpu", t3_model="v3",
@@ -461,10 +461,10 @@ def test_tts_server_piper_missing_model_raises(tmp_path):
 
 
 def test_tts_server_passes_respell_switches_per_request(monkeypatch, tmp_path):
-    """Istek basina A/B kablolamasi: 'softg'/'tr_raw' synth_chatterbox'a dogru gecer.
+    """Per-request A/B wiring: 'softg'/'tr_raw' reach synth_chatterbox correctly.
 
-    {'softg': false} -> yalniz 'ğ' respell kapali (respell=True, softg=False)
-    {'tr_raw': true} -> tum TR duzeltmeleri kapali (respell=False)
+    {'softg': false} -> only the 'ğ' respell is off (respell=True, softg=False)
+    {'tr_raw': true} -> all TR corrections are off (respell=False)
     """
     import threading
     import types
@@ -499,15 +499,15 @@ def test_tts_server_passes_respell_switches_per_request(monkeypatch, tmp_path):
         srv.server_close()
 
     def last_call(prefix):
-        # ⚠️ Windows loopback reset'inde _post_json istegi tekrar gonderir ve ayni istek iki
-        # kez sentezlenir; bu yuzden sirayla degil, istek basina **son** cagriyla dogrulanir.
+        # ⚠️ On a Windows loopback reset, _post_json resends the request and the same request is
+        # synthesised twice; so we verify with the **last** call per request, not by order.
         rows = [s for s in seen if s["prefix"].startswith(prefix)]
-        assert rows, f"{prefix} istegi icin sentez cagrisi yok"
+        assert rows, f"no synthesis call for the {prefix} request"
         return rows[-1]
 
     first = last_call("r1_")
-    assert first["softg"] is False and first["respell"] is True        # yalniz 'ğ' kapali
+    assert first["softg"] is False and first["respell"] is True        # only 'ğ' is off
     second = last_call("r2_")
-    assert second["respell"] is False and second["tr_fix"] is False    # tr_raw: hepsi kapali
+    assert second["respell"] is False and second["tr_fix"] is False    # tr_raw: everything is off
     third = last_call("r3_")
-    assert third["softg"] is True and third["respell"] is True         # varsayilan: hepsi acik
+    assert third["softg"] is True and third["respell"] is True         # default: everything is on

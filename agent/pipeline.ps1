@@ -1,24 +1,24 @@
 #!/usr/bin/env pwsh
-# pipeline.ps1 - ASR -> LLM -> TTS boru hatti (Altai)
+# pipeline.ps1 - ASR -> LLM -> TTS pipeline (Altai)
 #
-# Akis:  WAV/Text -> whisper.cpp (asr-tools.py) -> llama-server (HTTP) -> cumlelere bol
-#        -> TTS (tts-tools.py; TR icin chatterbox duzeltmeleri OTOMATIK) -> WAV'lar
+# Flow:  WAV/Text -> whisper.cpp (asr-tools.py) -> llama-server (HTTP) -> sentence split
+#        -> TTS (tts-tools.py; for TR the chatterbox fixes are AUTOMATIC) -> WAVs
 #
-# TTS TOPLU MOD: chatterbox icin cumleler TEK cagrida uretilir (--batch-file + --out-prefix),
-#   boylece model BIR KEZ yuklenir (her cumlede ~13 sn + torch import ~8 sn tekrar etmez).
-#   Beklenen kazanc: 2 cumlede ~57 sn -> ~15 sn. Baska backend'lerde cumle-cumle moda dusulur.
+# TTS BATCH MODE: for chatterbox the sentences are produced in a SINGLE call (--batch-file + --out-prefix),
+#   so the model is loaded ONCE (no ~13 s per sentence + torch import ~8 s repeated).
+#   Expected gain: ~57 s -> ~15 s for 2 sentences. Other backends fall back to per-sentence mode.
 #
-# TTS KALICI SUNUCU (-TtsServerUrl): model surekli bellekte kalir (scripts\tts-server.ps1);
-#   her turda yalniz uretim kalir (yukleme tekrari tamamen biter). Oncelikli onerilen yol.
+# TTS PERSISTENT SERVER (-TtsServerUrl): the model stays resident in memory (scripts\tts-server.ps1);
+#   each turn only generation remains (loading repeats are gone completely). Preferred path.
 #
-# Ornek:
+# Example:
 #   pwsh -File agent\pipeline.ps1 -Text "Merhaba, nasilsin?" -Lang tr
-#   pwsh -File agent\pipeline.ps1 -Wav kayit.wav -Model models\ggml-large-v3-turbo-q5_0.bin -AsrThreads 12
-#   pwsh -File agent\pipeline.ps1 -Wav kayit.wav -AsrServerUrl http://127.0.0.1:8081 `
+#   pwsh -File agent\pipeline.ps1 -Wav recording.wav -Model models\ggml-large-v3-turbo-q5_0.bin -AsrThreads 12
+#   pwsh -File agent\pipeline.ps1 -Wav recording.wav -AsrServerUrl http://127.0.0.1:8081 `
 #        -TtsServerUrl http://127.0.0.1:8082
 #
-# Not: Bilesen (whisper / llama-server) yoksa DURUSTCE hata verir, uydurmaz.
-#      TTS backend'leri (chatterbox/voxcpm) icin -Python olarak tts-venv python'u verin.
+# Note: if a component (whisper / llama-server) is missing it fails HONESTLY, it does not invent one.
+#       For the TTS backends (chatterbox/voxcpm) pass the tts-venv python as -Python.
 param(
   [string]$Wav,
   [string]$Text,
@@ -47,13 +47,13 @@ $tts = Join-Path $repo "agent\tts-tools.py"
 $outRoot = Join-Path $repo $OutDir
 New-Item -ItemType Directory -Force -Path $outRoot | Out-Null
 
-# --- 1) ASR: metne cevir ---
+# --- 1) ASR: convert to text ---
 if ($TextFile) { $Text = [System.IO.File]::ReadAllText($TextFile).Trim() }
 if (-not $Text) {
-    if (-not $Wav) { throw "Ne -Text ne -Wav verildi." }
-    if (-not $Model -and -not $AsrServerUrl) { throw "ASR icin -Model (whisper .bin) ya da -AsrServerUrl gerekli." }
-    # JSON'u DOSYADAN oku (UTF-8). Native stdout'u boruya baglamak PS 5.1'de
-    # kodlama bozar (tuzak #14): Turkce karakterler yanlis cozulur.
+    if (-not $Wav) { throw "Neither -Text nor -Wav was given." }
+    if (-not $Model -and -not $AsrServerUrl) { throw "ASR needs -Model (whisper .bin) or -AsrServerUrl." }
+    # Read the JSON from a FILE (UTF-8). Piping native stdout in PS 5.1 breaks the
+    # encoding (pitfall #14): Turkish characters are decoded incorrectly.
     $asrJson = Join-Path $outRoot "asr.json"
     $asrErr = Join-Path $outRoot "asr.err.txt"
     $asrArgs = @($asr, "--wav", $Wav, "--lang", $Lang, "--out", $asrJson)
@@ -62,23 +62,23 @@ if (-not $Text) {
     if ($Whisper) { $asrArgs += @("--whisper", $Whisper) }
     if ($AsrThreads -gt 0) { $asrArgs += @("--threads", $AsrThreads) }
     $oldEap = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"   # native stderr (uyari/tqdm) hata sayilmasin
+    $ErrorActionPreference = "Continue"   # do not treat native stderr (warnings/tqdm) as an error
     & $Python @asrArgs 1> $null 2> $asrErr
     $code = $LASTEXITCODE
     $ErrorActionPreference = $oldEap
     if ($code -ne 0 -or -not (Test-Path $asrJson)) {
-        throw "ASR basarisiz (cikis $code); hata: $asrErr"
+        throw "ASR failed (exit $code); error: $asrErr"
     }
     $asrOut = Get-Content -Raw -Encoding UTF8 $asrJson | ConvertFrom-Json
-    if (-not $asrOut.ok) { throw "ASR basarisiz: $($asrOut.error)" }
+    if (-not $asrOut.ok) { throw "ASR failed: $($asrOut.error)" }
     $r0 = $asrOut.results[0]
-    Write-Host ("[ASR] {0} sn ses -> {1} sn (RTF {2}, threads {3})" -f `
+    Write-Host ("[ASR] {0} s audio -> {1} s (RTF {2}, threads {3})" -f `
         $r0.audio_seconds, $r0.asr_seconds, $r0.rtf, $asrOut.threads)
     $Text = $r0.text
 }
-Write-Host "[METIN] $Text"
+Write-Host "[TEXT] $Text"
 
-# --- 2) LLM: yanit (llama-server, OpenAI uyumlu) ---
+# --- 2) LLM: response (llama-server, OpenAI compatible) ---
 $payload = @{
     messages    = @(
         @{ role = "system"; content = "Sen kisa ve dogal Turkce cevap veren bir sesli asistansin." },
@@ -86,7 +86,7 @@ $payload = @{
     )
     max_tokens  = $MaxTokens
     temperature = 0.7
-    # Dusunme VARSAYILAN ACIK (NoThink ile kapatilir). Not: max_tokens dusunmeyi de kapsar.
+    # Thinking is ON BY DEFAULT (disabled with -NoThink). Note: max_tokens also covers thinking.
     chat_template_kwargs = @{ enable_thinking = (-not $NoThink) }
 } | ConvertTo-Json -Depth 6
 try {
@@ -94,47 +94,47 @@ try {
         -ContentType "application/json; charset=utf-8" `
         -Body ([Text.Encoding]::UTF8.GetBytes($payload))
 } catch {
-    throw "LLM sunucusuna ulasilamadi ($Server). 'llama-server' calisiyor mu? Detay: $($_.Exception.Message)"
+    throw "Could not reach the LLM server ($Server). Is 'llama-server' running? Detail: $($_.Exception.Message)"
 }
 $answer = $resp.choices[0].message.content
 if (-not $answer) {
     if ($resp.choices[0].finish_reason -eq "length" -and $resp.choices[0].message.reasoning_content) {
-        throw "LLM cevabi token limitinde kesildi (dusunme acik; -MaxTokens artir ya da -NoThink kullan)."
+        throw "LLM response was cut at the token limit (thinking is on; raise -MaxTokens or use -NoThink)."
     }
-    throw "LLM bos cevap dondurdu."
+    throw "LLM returned an empty response."
 }
 Write-Host "[LLM] $answer"
 
-# --- 3) Cumlelere bol ---
-# Emoji/sembol-only parcalari at (TTS bunlarda coker); harf/rakam iceren cumleler kalsin
+# --- 3) Split into sentences ---
+# Drop emoji/symbol-only fragments (TTS crashes on them); keep sentences containing letters/digits
 $sentences = @([regex]::Split($answer, '(?<=[\.\!\?])\s+') |
     Where-Object { $_.Trim().Length -gt 0 -and ($_ -match '\p{L}|\p{N}') } |
     ForEach-Object { $_.Trim() })
 
-# --- 4) TTS: cumleleri WAV'a cevir ---
-# chatterbox => TOPLU MOD (model bir kez yuklenir). Digerleri / toplu hata => cumle-cumle yedek.
+# --- 4) TTS: convert the sentences to WAV ---
+# chatterbox => BATCH MODE (model loaded once). Others / batch failure => per-sentence fallback.
 $wavs = @()
 function Invoke-TtsSingle([string]$Sentence, [int]$Index) {
     $txtFile = Join-Path $outRoot "tts_$Index.txt"
     $wavFile = Join-Path $outRoot "tts_$Index.wav"
     $jsonFile = Join-Path $outRoot "tts_$Index.json"
     $errFile = Join-Path $outRoot "tts_$Index.err.txt"
-    # UTF-8 (BOM'suz) text-file ile; konsol kodlamasi metni bozmasin
+    # via a UTF-8 (no BOM) text file; keep the console encoding from corrupting the text
     [System.IO.File]::WriteAllText($txtFile, $Sentence, (New-Object System.Text.UTF8Encoding($false)))
     $ttsArgs = @($tts, "--backend", $Backend, "--lang", $Lang, "--text-file", $txtFile,
                  "--out", $wavFile, "--device", $Device, "--json-out", $jsonFile)
     if ($VoicePrompt) { $ttsArgs += @("--voice-prompt", $VoicePrompt) }
     $oldEap = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"   # native stderr (tqdm/uyari) hata sayilmasin
-    & $Python @ttsArgs 1> $null 2> $errFile   # stdout'u yut: JSON dosyadan okunuyor
+    $ErrorActionPreference = "Continue"   # do not treat native stderr (tqdm/warnings) as an error
+    & $Python @ttsArgs 1> $null 2> $errFile   # swallow stdout: JSON is read from the file
     $code = $LASTEXITCODE
     $ErrorActionPreference = $oldEap
     if ($code -ne 0 -or -not (Test-Path $jsonFile)) {
-        Write-Warning "TTS ($Backend) basarisiz (cikis $code); hata: $errFile"
+        Write-Warning "TTS ($Backend) failed (exit $code); error: $errFile"
         return $null
     }
     $out = Get-Content -Raw -Encoding UTF8 $jsonFile | ConvertFrom-Json
-    if (-not $out.ok) { Write-Warning "TTS ($Backend) basarisiz: $($out.error)"; return $null }
+    if (-not $out.ok) { Write-Warning "TTS ($Backend) failed: $($out.error)"; return $null }
     return $wavFile
 }
 
@@ -143,10 +143,10 @@ if ($sentences.Count -gt 0) {
     $batch = $null
 
     if ($Backend -eq "chatterbox" -and $TtsServerUrl) {
-        # --- KALICI SUNUCU: model zaten bellekte -> yalniz uretim ---
-        # Windows loopback'te nadir socket reset'i (WinError 10054) olusabiliyor -> 2 deneme.
-        # Yerel CLI yedegine DUSULMEZ: sunucu modeli VRAM'de tuttugu icin ikinci Chatterbox
-        # OOM olur; sessiz bozulma yerine durust hata verilir.
+        # --- PERSISTENT SERVER: model already in memory -> generation only ---
+        # A rare socket reset (WinError 10054) can happen on Windows loopback -> 2 attempts.
+        # NO fallback to the local CLI: because the server keeps the model in VRAM, a second Chatterbox
+        # would OOM; an honest error is returned instead of silent corruption.
         $body = @{ texts = @([string[]]$sentences); lang = $Lang; out_dir = $outRoot; prefix = "tts_" }
         if ($VoicePrompt) { $body.voice_prompt = $VoicePrompt }
         $attempt = 0
@@ -159,25 +159,25 @@ if ($sentences.Count -gt 0) {
                 break
             } catch {
                 if ($attempt -ge 2) {
-                    throw "TTS sunucusuna ulasilamadi ($TtsServerUrl, $attempt deneme). 'scripts\tts-server.ps1' calisiyor mu? Detay: $($_.Exception.Message)"
+                    throw "Could not reach the TTS server ($TtsServerUrl, $attempt attempts). Is 'scripts\tts-server.ps1' running? Detail: $($_.Exception.Message)"
                 }
-                Write-Warning "TTS sunucu baglantisi koptu; yeniden deneniyor ($attempt)."
+                Write-Warning "TTS server connection dropped; retrying ($attempt)."
                 Start-Sleep -Milliseconds 500
             }
         }
         if ($batch.ok) {
-            Write-Host ("[TTS] SUNUCU: {0} cumle, uretim {1} sn, RTF {2}" -f `
+            Write-Host ("[TTS] SERVER: {0} sentences, generation {1} s, RTF {2}" -f `
                 $batch.count, $batch.total_tts_seconds, $batch.rtf)
         } else {
-            throw "TTS sunucusu hata dondurdu: $($batch.error)"
+            throw "TTS server returned an error: $($batch.error)"
         }
     }
     elseif ($Backend -eq "chatterbox") {
-        # --- TOPLU MOD (tek surec): model cagri basina bir kez yuklenir ---
+        # --- BATCH MODE (single process): model loaded once per call ---
         $batchFile = Join-Path $outRoot "tts_batch.txt"
         $jsonFile = Join-Path $outRoot "tts_batch.json"
         $errFile = Join-Path $outRoot "tts_batch.err.txt"
-        # her satir bir cumle; UTF-8 (BOM'suz)
+        # one sentence per line; UTF-8 (no BOM)
         [System.IO.File]::WriteAllLines($batchFile, [string[]]$sentences, (New-Object System.Text.UTF8Encoding($false)))
         $ttsArgs = @($tts, "--backend", $Backend, "--lang", $Lang,
                      "--batch-file", $batchFile, "--out-prefix", (Join-Path $outRoot "tts_"),
@@ -185,39 +185,39 @@ if ($sentences.Count -gt 0) {
         if ($VoicePrompt) { $ttsArgs += @("--voice-prompt", $VoicePrompt) }
         $oldEap = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
-        & $Python @ttsArgs 1> $null 2> $errFile   # stdout'u yut: JSON dosyadan okunuyor
+        & $Python @ttsArgs 1> $null 2> $errFile   # swallow stdout: JSON is read from the file
         $code = $LASTEXITCODE
         $ErrorActionPreference = $oldEap
         if ($code -eq 0 -and (Test-Path $jsonFile)) {
             $batch = Get-Content -Raw -Encoding UTF8 $jsonFile | ConvertFrom-Json
             if ($batch.ok) {
-                Write-Host ("[TTS] TOPLU: {0} cumle, model yukleme {1} sn, uretim {2} sn, RTF {3}" -f `
+                Write-Host ("[TTS] BATCH: {0} sentences, model load {1} s, generation {2} s, RTF {3}" -f `
                     $batch.count, $batch.load_seconds, $batch.total_tts_seconds, $batch.rtf)
             } else {
-                Write-Warning "TTS toplu mod basarisiz: $($batch.error)"
+                Write-Warning "TTS batch mode failed: $($batch.error)"
             }
         } else {
-            Write-Warning "TTS toplu mod basarisiz (cikis $code); hata: $errFile"
+            Write-Warning "TTS batch mode failed (exit $code); error: $errFile"
         }
     }
 
-    # toplu/sunucu sonuclarini topla (ortak)
+    # collect batch/server results (shared)
     if ($batch -and $batch.ok) {
         foreach ($r in $batch.results) {
             $w = $r.out
-            # Savunma: JSON'daki `out` bayat/eksik olabilir (or. guard retry'i) ->
-            # sozlesmedeki dosya adina dus (prefix "tts_", index 1-tabanli).
+            # Defence: `out` in the JSON may be stale/missing (e.g. guard retry) ->
+            # fall back to the file name from the contract (prefix "tts_", 1-based index).
             if (-not $w -or -not (Test-Path -LiteralPath $w)) {
                 $alt = Join-Path $outRoot ("tts_{0}.wav" -f $r.index)
                 if (Test-Path -LiteralPath $alt) { $w = $alt }
             }
             if ($r.ok -and $w -and (Test-Path -LiteralPath $w)) { $wavs += $w }
-            else { Write-Warning "TTS cumle $($r.index) basarisiz: $($r.error)" }
+            else { Write-Warning "TTS sentence $($r.index) failed: $($r.error)" }
         }
         $batchOk = $true
     }
     if (-not $batchOk) {
-        if ($Backend -eq "chatterbox") { Write-Warning "Toplu TTS olmadi; cumle-cumle (yavas) moda dusuluyor." }
+        if ($Backend -eq "chatterbox") { Write-Warning "Batch TTS did not work; falling back to per-sentence (slow) mode." }
         $i = 0
         foreach ($s in $sentences) {
             $i++
@@ -228,6 +228,6 @@ if ($sentences.Count -gt 0) {
     foreach ($w in $wavs) { Write-Host "[TTS] $w" }
 }
 
-# --- 5) Cal (opsiyonel) ---
+# --- 5) Play (optional) ---
 if ($Play) { foreach ($w in $wavs) { (New-Object System.Media.SoundPlayer $w).PlaySync() } }
-Write-Host "TAMAM. Uretilen WAV: $($wavs.Count)"
+Write-Host "DONE. WAVs produced: $($wavs.Count)"

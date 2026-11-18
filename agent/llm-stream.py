@@ -1,16 +1,17 @@
-"""llm-stream.py - AKISLI tur: llama-server SSE -> cumle cumle -> TTS sunucusu.
+"""llm-stream.py - STREAMING turn: llama-server SSE -> sentence by sentence -> TTS server.
 
-Amaç: LLM yanitinin TAMAMINI beklemek yerine, ilk cumle olusur olusmaz TTS'e
-gondermek ve sesleri sirayla (arka planda) calmak. Boylece "ilk ses" gecikmesi
-= ASR + ilk token + ilk cumle + ilk cumle TTS'i olur; LLM'in kalanini yazmasi ve
-diger cumlelerin sentezi ilk ses CALARKEN olur (boru hatti ilkesi #7).
+Goal: instead of waiting for the WHOLE LLM answer, send each sentence to TTS as soon
+as it forms and play the audio in order (in the background). That way "first audio"
+latency = ASR + first token + first sentence + first sentence TTS; the rest of the LLM
+output and the synthesis of the remaining sentences happen WHILE the first audio is
+PLAYING (pipeline principle #7).
 
-Girdi: metin (LLM'e kullanici mesaji). Cikti: --json-out ozet (zaman damgalariyla)
-+ uretilen WAV'lar (`--out-dir`/`--prefix`).
+Input: text (the user message for the LLM). Output: --json-out summary (with timestamps)
++ generated WAVs (`--out-dir`/`--prefix`).
 
-Bagimlilik yok (stdlib). TTS icin kalici sunucu gerekir (`tts-tools.py --serve`).
+No dependencies (stdlib). TTS needs a persistent server (`tts-tools.py --serve`).
 
-Ornek:
+Example:
   python agent/llm-stream.py --text "Merhaba, nasilsin?" --lang tr ^
       --server http://127.0.0.1:8080 --tts-server http://127.0.0.1:8082 ^
       --out-dir logs\\pipeline-stream --play --json-out logs\\pipeline-stream\\s.json
@@ -27,7 +28,7 @@ import time
 import urllib.error
 import urllib.request
 
-# Windows konsolu cp1254 olabilir; emoji/TR karakterler print'i patlatmasin
+# The Windows console may be cp1254; emoji/TR characters must not break print
 try:
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
@@ -36,32 +37,32 @@ except Exception:
 
 SYSTEM_TR = "Sen kisa ve dogal Turkce cevap veren bir sesli asistansin."
 
-# Yeniden denenebilir (gecici) ag hatalari: Windows loopback RST, kopan baglanti,
-# yarim okunan govde. HTTP hatalari (4xx/5xx) BURADA DEGIL: onlar istegin reddi.
+# Retryable (transient) network errors: Windows loopback RST, dropped connection,
+# half-read body. HTTP errors (4xx/5xx) are NOT listed here: those are request rejections.
 TRANSIENT = (urllib.error.URLError, ConnectionError, OSError, http.client.HTTPException)
 
 
 def _post_json(url, payload, timeout=300):
-    """UTF-8 JSON POST'u; yaniti sozluk olarak dondurur."""
+    """UTF-8 JSON POST; returns the response as a dict."""
     req = urllib.request.Request(
         url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json; charset=utf-8"}, method="POST")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
-# Cumle sonu: . ! ? … ve ardindan bosluk/satir sonu
+# Sentence end: . ! ? … followed by whitespace/end of line
 _BOUNDARY = re.compile(r"[.!?\u2026](\s|$)")
-# Kisa "kaba" bolme: virgul/noktali virgul de kabul (uzun cumleleri erken baslat)
+# Short "rough" split: comma/semicolon is accepted too (start long sentences early)
 _SOFT = re.compile(r"[,;:](\s|$)")
 
 
 class SentenceBuffer:
-    """Token akisini cumlelere boler (kademeli).
+    """Splits the token stream into sentences (incrementally).
 
-    - Kesin son: `.!?…` + bosluk/son.
-    - `force_chars` asilirsa son bosluktan zorla bol (uzun cumleyi bekletme).
-    - `soft_chars` asilirsa ve virgul/noktali virgul varsa oradan bol (istege bagli).
-    - `min_chars` altindaki parca tek basina gonderilmez (bir sonrakiyle birlesir).
+    - Hard end: `.!?…` + whitespace/end.
+    - If `force_chars` is exceeded, force a split at the last space (do not hold back a long sentence).
+    - If `soft_chars` is exceeded and there is a comma/semicolon, split there (optional).
+    - A piece shorter than `min_chars` is not sent on its own (it merges with the next one).
     """
 
     def __init__(self, min_chars=2, force_chars=180, soft_chars=120):
@@ -71,7 +72,7 @@ class SentenceBuffer:
         self.soft_chars = soft_chars
 
     def feed(self, text):
-        """Akisa gelen parcayi ekler; TAMAMLANMIS cumleleri dondurur (0+)."""
+        """Appends the incoming chunk; returns COMPLETED sentences (0+)."""
         self.buf += text or ""
         out = []
         while True:
@@ -82,7 +83,7 @@ class SentenceBuffer:
         return out
 
     def flush(self):
-        """Akis bitti: kalan tamponu (varsa) tek cumle olarak dondurur."""
+        """Stream ended: returns the remaining buffer (if any) as a single sentence."""
         out = []
         while True:
             s = self._pop(True)
@@ -122,7 +123,7 @@ class SentenceBuffer:
         piece = buf[:cut].strip()
         self.buf = buf[cut:]
         if len(piece) < self.min_chars:
-            # cok kisa parca: bir sonraki akisla birlestir
+            # very short piece: merge it with the next incoming text
             self.buf = piece + " " + self.buf if piece else self.buf
             if final:
                 self.buf = self.buf.strip()
@@ -134,16 +135,16 @@ class SentenceBuffer:
 
 
 def is_speakable(text):
-    """Harf/rakam yoksa (emoji/sembol-only) TTS'e gondermeye degmez."""
+    """With no letters/digits (emoji/symbol-only) it is not worth sending to TTS."""
     return any(ch.isalnum() for ch in (text or ""))
 
 
 def iter_deltas(server, messages, max_tokens=1024, think=True, temperature=0.7,
                 timeout=300):
-    """llama-server SSE akisini (kind, text) olarak uretir.
+    """Yields the llama-server SSE stream as (kind, text).
 
-    kind: 'content' | 'reasoning'. Ilk parca geldiginde 'first' olayi da uretilir:
-    ('first', 'content'|'reasoning').
+    kind: 'content' | 'reasoning'. When the first chunk arrives, a 'first' event is
+    yielded as well: ('first', 'content'|'reasoning').
     """
     payload = {
         "messages": messages,
@@ -185,11 +186,11 @@ def iter_deltas(server, messages, max_tokens=1024, think=True, temperature=0.7,
 
 
 def synth(tts_server, text, out_dir, prefix, lang=None, timeout=300, attempts=2):
-    """TTS sunucusuna tek cumle gonderir; sonuc sozlugu (out, audio_seconds...) doner.
+    """Sends a single sentence to the TTS server; returns the result dict (out, audio_seconds...).
 
-    Windows loopback'te nadir socket reset'i olusuyor (WinError 10054 / IncompleteRead);
-    sentez tekrar uretilebilir oldugu icin `attempts` kez denenir. HTTP hatasi
-    (or. 400: bozuk girdi) **tekrar denenmez** - istek zaten reddedilmistir.
+    Windows loopback occasionally throws a socket reset (WinError 10054 / IncompleteRead);
+    synthesis is reproducible, so it is attempted `attempts` times. An HTTP error
+    (e.g. 400: bad input) is **not retried** - the request has already been rejected.
     """
     body = {"texts": [text], "out_dir": out_dir, "prefix": prefix}
     if lang:
@@ -206,19 +207,19 @@ def synth(tts_server, text, out_dir, prefix, lang=None, timeout=300, attempts=2)
             if i >= max(1, attempts):
                 raise
             time.sleep(0.4 * i)
-            print(f"[uyari] TTS baglantisi koptu ({type(exc).__name__}); "
-                  f"yeniden deneniyor ({i + 1}/{attempts})", file=sys.stderr)
+            print(f"[warn] TTS connection dropped ({type(exc).__name__}); "
+                  f"retrying ({i + 1}/{attempts})", file=sys.stderr)
     results = (data or {}).get("results") or []
     if not results or not results[0].get("ok"):
-        err = (results[0].get("error") if results else (data or {}).get("error")) or "bilinmeyen hata"
-        raise RuntimeError(f"TTS basarisiz: {err}")
+        err = (results[0].get("error") if results else (data or {}).get("error")) or "unknown error"
+        raise RuntimeError(f"TTS failed: {err}")
     res = results[0]
     res["client_attempts"] = i
     return res
 
 
 class Player:
-    """Arka planda WAV calar (winsound); ilk ses CALARKEN uretim devam eder."""
+    """Plays WAVs in the background (winsound); generation continues WHILE the first audio is PLAYING."""
 
     def __init__(self, enabled=True):
         self.enabled = enabled
@@ -236,7 +237,7 @@ class Player:
     def _loop(self):
         try:
             import winsound
-        except Exception as exc:  # pragma: no cover - Windows disi
+        except Exception as exc:  # pragma: no cover - non-Windows
             self.errors.append(str(exc))
             return
         while True:
@@ -257,7 +258,7 @@ class Player:
 def run(text, server, tts_server, out_dir, prefix="s_", lang=None, think=True,
         max_tokens=1024, system=SYSTEM_TR, play=False, force_chars=180,
         soft_chars=120, timeout=300, log=None):
-    """Akisli tur: LLM akisi -> cumleler -> TTS -> (opsiyonel) oynatma. Ozet doner."""
+    """Streaming turn: LLM stream -> sentences -> TTS -> (optional) playback. Returns a summary."""
     log = log or (lambda *a: None)
     os.makedirs(out_dir, exist_ok=True)
     t0 = time.perf_counter()
@@ -282,19 +283,19 @@ def run(text, server, tts_server, out_dir, prefix="s_", lang=None, think=True,
         nonlocal first_sentence, first_wav, emitted
         if first_sentence is None:
             first_sentence = at
-        emitted += 1                       # basarisiz cumle de numarayi tuketir (ad karismasin)
+        emitted += 1                       # a failed sentence also consumes a number (so names do not collide)
         idx = emitted
         if not is_speakable(sentence):
-            log(f"  [{idx}] (atlandi: harf/rakam yok) {sentence!r}")
+            log(f"  [{idx}] (skipped: no letters/digits) {sentence!r}")
             return
         t_tts = time.perf_counter()
         try:
             res = synth(tts_server, sentence, out_dir, f"{prefix}{idx}_", lang=lang,
                         timeout=timeout)
-        except Exception as exc:  # noqa: BLE001 - tek cumle turu dusurmesin
+        except Exception as exc:  # noqa: BLE001 - a single sentence must not drop the turn
             failed.append({"index": idx, "text": sentence,
                            "error": f"{type(exc).__name__}: {exc}"})
-            log(f"  [{idx}] TTS BASARISIZ: {type(exc).__name__}: {exc}")
+            log(f"  [{idx}] TTS FAILED: {type(exc).__name__}: {exc}")
             return
         ready = time.perf_counter()
         if first_wav is None:
@@ -308,7 +309,7 @@ def run(text, server, tts_server, out_dir, prefix="s_", lang=None, think=True,
             "client_attempts": res.get("client_attempts", 1),
         })
         log(f"  [{idx}] +{ready - t0:5.1f}s  TTS {ready - t_tts:4.1f}s  "
-            f"{res.get('audio_seconds')}s ses  {sentence!r}")
+            f"{res.get('audio_seconds')}s audio  {sentence!r}")
         player.play(res.get("out"))
 
     try:
@@ -318,7 +319,7 @@ def run(text, server, tts_server, out_dir, prefix="s_", lang=None, think=True,
                 now = time.perf_counter()
                 if kind == "first":
                     first_token, first_token_kind = now, txt
-                    log(f"[LLM] ilk parca ({txt}) +{now - t0:.2f}s")
+                    log(f"[LLM] first chunk ({txt}) +{now - t0:.2f}s")
                 elif kind == "reasoning":
                     reasoning_chars += len(txt)
                 elif kind == "content":
@@ -329,11 +330,11 @@ def run(text, server, tts_server, out_dir, prefix="s_", lang=None, think=True,
                     finish_reason = txt
             llm_done = time.perf_counter()
         except TRANSIENT as exc:
-            # Akis ortasinda kopma: elde edilen cumlelerle devam et (kullanici zaten
-            # bir seyler duydu); durum ozette `stream_error` olarak bildirilir.
+            # Connection dropped mid-stream: continue with the sentences already obtained
+            # (the user has heard something already); reported as `stream_error` in the summary.
             stream_error = f"{type(exc).__name__}: {exc}"
             llm_done = time.perf_counter()
-            log(f"[LLM] akis koptu ({stream_error}); eldeki cumlelerle devam ediliyor")
+            log(f"[LLM] stream dropped ({stream_error}); continuing with the sentences at hand")
         for s in sb.flush():
             emit(s, llm_done if llm_done else time.perf_counter())
     finally:
@@ -359,7 +360,7 @@ def run(text, server, tts_server, out_dir, prefix="s_", lang=None, think=True,
         "play_errors": player.errors,
     }
     if answer and not sentences:
-        summary["error"] = "yanit uretilemedi (bos ya da yalniz dusunme)"
+        summary["error"] = "could not produce an answer (empty or reasoning only)"
     return summary
 
 
@@ -373,7 +374,7 @@ def _json(payload, path):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Akisli LLM -> cumle -> TTS turu")
+    ap = argparse.ArgumentParser(description="Streaming LLM -> sentence -> TTS turn")
     ap.add_argument("--text")
     ap.add_argument("--text-file")
     ap.add_argument("--server", default="http://127.0.0.1:8080")
@@ -396,7 +397,7 @@ def main(argv=None):
         with open(args.text_file, encoding="utf-8") as f:
             text = f.read().strip()
     if not text:
-        _json({"ok": False, "error": "metin yok (--text/--text-file)"}, args.json_out)
+        _json({"ok": False, "error": "no text (--text/--text-file)"}, args.json_out)
         return 2
 
     try:
@@ -406,7 +407,7 @@ def main(argv=None):
                       soft_chars=args.soft_chars, timeout=args.timeout,
                       log=lambda s: print(s, file=sys.stderr))
     except urllib.error.URLError as exc:
-        _json({"ok": False, "error": f"sunucuya ulasilamadi: {exc}"}, args.json_out)
+        _json({"ok": False, "error": f"server unreachable: {exc}"}, args.json_out)
         return 3
     except Exception as exc:  # noqa: BLE001
         _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, args.json_out)

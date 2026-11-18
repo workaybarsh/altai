@@ -1,10 +1,10 @@
-"""MTP basligi enjeksiyonunun cekirdek mantigini cevrimdisi dogrular.
+"""Verifies the core logic of MTP header injection offline.
 
-Gercek GGUF indirmeye gerek yoktur: kucuk, sentetik bir `qwen35` GGUF uretilir ve
-sentetik MTP tensorleri enjekte edilir. Boylece T1/T2/T7 kabul testlerinin mantigi
-hizli ve agsiz kosulur.
+No real GGUF download is needed: a small, synthetic `qwen35` GGUF is built and
+synthetic MTP tensors are injected. This way the logic of the T1/T2/T7 acceptance
+tests runs fast and without a network.
 
-Kabul testleri icin bkz. docs/mtp-dogrulama.md.
+For the acceptance tests see docs/mtp-verification.md.
 """
 import struct
 
@@ -12,7 +12,7 @@ import pytest
 
 import mtp_inject as m
 
-# Kaynak repodan dogrulanmis 15 MTP tensoru (bkz. docs/mtp-dogrulama.md)
+# The 15 MTP tensors verified in the source repo (see docs/mtp-verification.md)
 EXPECTED_MTP = {
     "mtp.fc.weight",
     "mtp.layers.0.input_layernorm.weight",
@@ -45,7 +45,7 @@ def _align_up(x, a=ALIGN):
 
 
 def build_synthetic_gguf(path, block_count=1, arch="qwen35"):
-    """Minimal ama gecerli bir GGUF yazar (tek sahte tensor)."""
+    """Writes a minimal but valid GGUF (a single dummy tensor)."""
     meta = [
         _s("general.architecture") + struct.pack("<I", STRING) + _s(arch),
         _s(f"{arch}.block_count") + struct.pack("<I", U32) + struct.pack("<I", block_count),
@@ -53,9 +53,9 @@ def build_synthetic_gguf(path, block_count=1, arch="qwen35"):
     tensors = [("token_embd.weight", [4], F32, 0)]
     with open(path, "wb") as f:
         f.write(b"GGUF")
-        f.write(struct.pack("<I", 3))                 # surum
-        f.write(struct.pack("<Q", len(tensors)))      # tensor sayisi
-        f.write(struct.pack("<Q", len(meta)))         # kv sayisi
+        f.write(struct.pack("<I", 3))                 # version
+        f.write(struct.pack("<Q", len(tensors)))      # tensor count
+        f.write(struct.pack("<Q", len(meta)))         # kv count
         for kv in meta:
             f.write(kv)
         for name, dims, ttype, off in tensors:
@@ -66,17 +66,17 @@ def build_synthetic_gguf(path, block_count=1, arch="qwen35"):
             f.write(struct.pack("<I", ttype))
             f.write(struct.pack("<Q", off))
         f.write(b"\x00" * ((-f.tell()) % ALIGN))
-        f.write(struct.pack("<4f", 1.0, 2.0, 3.0, 4.0))  # token_embd verisi
+        f.write(struct.pack("<4f", 1.0, 2.0, 3.0, 4.0))  # token_embd data
 
 
 def fake_mtp_tensors():
-    """`mtp_inject.MAP` ile ayni anahtarlara sahip minik sentetik tensorler."""
+    """Tiny synthetic tensors with the same keys as `mtp_inject.MAP`."""
     out = {}
     for hf in m.MAP:
-        if "norm" in hf:                      # 1-B normlar -> F32
+        if "norm" in hf:                      # 1-D norms -> F32
             out[hf] = {"dtype": "F32", "shape": [4],
                        "raw": struct.pack("<4f", 0.5, 0.5, 0.5, 0.5)}
-        else:                                 # buyuk matrisler -> F16
+        else:                                 # large matrices -> F16
             out[hf] = {"dtype": "F16", "shape": [8, 4], "raw": b"\x00" * (8 * 4 * 2)}
     return out
 
@@ -107,10 +107,10 @@ def test_injection_adds_mtp_t1_t2(tmp_path):
 
     m.inject_into_gguf(str(p), fake_mtp_tensors(), emit=lambda *_: None)
 
-    # T1: artik MTP var
+    # T1: MTP is now present
     assert m.has_mtp(str(p)) is True
     d = meta_dict(str(p))
-    # T2: ust veri
+    # T2: header data
     assert d["general.architecture"] == "qwen35"
     assert d["qwen35.nextn_predict_layers"] == 1
     assert d["qwen35.block_count"] == 2  # 1 + 1
@@ -118,7 +118,7 @@ def test_injection_adds_mtp_t1_t2(tmp_path):
     _v2, _meta2, tensors2, _d2 = m.read_header(str(p))
     names = [t[0] for t in tensors2]
     assert len(tensors2) == len(base_tensors) + len(m.MAP)
-    assert "blk.1.attn_norm.weight" in names          # MTP blogu eski block_count indeksinde
+    assert "blk.1.attn_norm.weight" in names          # MTP block sits at the old block_count index
     assert sum(1 for n in names if ".nextn." in n) == 4  # eh_proj, enorm, hnorm, shared_head_norm
 
 
@@ -128,7 +128,7 @@ def test_injection_is_idempotent_t7(tmp_path):
     m.inject_into_gguf(str(p), fake_mtp_tensors(), emit=lambda *_: None)
     _v, _m, tensors_after_first, _d = m.read_header(str(p))
 
-    # Ikinci cagri: basligi zaten gorup atlamali, tensor eklememeli
+    # Second call: must see the header and skip, adding no tensors
     m.inject_into_gguf(str(p), fake_mtp_tensors(), emit=lambda *_: None)
     _v2, _m2, tensors_after_second, _d2 = m.read_header(str(p))
     assert len(tensors_after_second) == len(tensors_after_first)

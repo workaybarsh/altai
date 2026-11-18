@@ -1,16 +1,16 @@
 <#
-    tts-server.ps1 - kalici TTS (Chatterbox) HTTP sunucusunu baslat/durdur (Altai)
+    tts-server.ps1 - start/stop the persistent TTS (Chatterbox) HTTP server (Altai)
 
-    Amac: TTS modelini BELLEKTE tutmak. `tts-tools.py` her cagride torch+model yukler
-    (~20 sn); bu sunucuyla tek yukleme olur, her tur yalniz uretim kalir (~4-7 sn).
-    `agent/pipeline.ps1 -TtsServerUrl http://127.0.0.1:8082` bu sunucuya baglanir.
+    Purpose: keep the TTS model IN MEMORY. `tts-tools.py` loads torch+model on every call
+    (~20 s); with this server there is a single load, and each turn only generation remains (~4-7 s).
+    `agent/pipeline.ps1 -TtsServerUrl http://127.0.0.1:8082` connects to this server.
 
-    Kullanim:
+    Usage:
       pwsh -File scripts\tts-server.ps1
       pwsh -File scripts\tts-server.ps1 -Port 8082 -Device cuda -Lang tr
       pwsh -File scripts\tts-server.ps1 -Stop
 
-    Not: Metinler ASCII tutuldu (Windows PowerShell 5.1 BOM'suz .ps1'i ANSI okur).
+    Note: text kept ASCII (Windows PowerShell 5.1 reads a BOM-less .ps1 as ANSI).
 #>
 param(
     [string]$Python = '',
@@ -49,18 +49,18 @@ if ($Stop) {
     Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
         Where-Object { $_.CommandLine -like '*tts-tools.py*--serve*' } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $stopped = $true }
-    if ($stopped) { Write-Host 'tts-server durduruldu.' } else { Write-Host 'Calisan tts-server yok.' }
+    if ($stopped) { Write-Host 'tts-server stopped.' } else { Write-Host 'No tts-server is running.' }
     exit 0
 }
 
-if (-not (Test-Path -LiteralPath $tool)) { throw "tts-tools.py bulunamadi: $tool" }
+if (-not (Test-Path -LiteralPath $tool)) { throw "tts-tools.py not found: $tool" }
 if (-not $Python) { $Python = Join-Path $env:USERPROFILE 'tts-venv\Scripts\python.exe' }
-if (-not (Test-Path -LiteralPath $Python)) { throw "Python bulunamadi: $Python (tts-venv)" }
+if (-not (Test-Path -LiteralPath $Python)) { throw "Python not found: $Python (tts-venv)" }
 
 $outLog = Join-Path $logRoot 'tts-server.out.log'
 $errLog = Join-Path $logRoot 'tts-server.err.log'
-# DIKKAT: repo yolu non-ASCII icerebilir; Start-Process'e mutlak yol argumani vermek bozar
-# -> calisma dizinini repo yapip betigi GORELI yolla ver.
+# WARNING: the repo path may contain non-ASCII characters; passing an absolute path argument to
+# Start-Process corrupts it -> make the working directory the repo and pass the script RELATIVE.
 $args = @('agent\tts-tools.py', '--serve', '--backend', $Backend, '--lang', $Lang,
           '--device', $Device, '--t3-model', $T3Model, '--host', $Bind, '--port', $Port)
 if ($VoicePrompt) { $args += @('--voice-prompt', $VoicePrompt) }
@@ -68,8 +68,8 @@ if ($Seed -ge 0) { $args += @('--seed', "$Seed") }
 if ($NoSoftg) { $args += @('--chatterbox-no-softg') }
 if ($TrRaw) { $args += @('--chatterbox-tr-raw') }
 
-# piper: ONEMLI - ikili ve ses dosyasi ASCII yolda olmali (espeak-ng/onnxruntime non-ASCII
-# yolda coker). Varsayilan: %LOCALAPPDATA%\altai\piper (ASCII).
+# piper: IMPORTANT - the binary and the voice file must be on an ASCII path (espeak-ng/onnxruntime
+# crash on a non-ASCII path). Default: %LOCALAPPDATA%\altai\piper (ASCII).
 if ($Backend -eq 'piper') {
     if (-not $Piper) { $Piper = Join-Path $env:LOCALAPPDATA 'altai\piper\piper.exe' }
     if (-not $PiperModel) { $PiperModel = Join-Path $env:LOCALAPPDATA 'altai\piper\voice.onnx' }
@@ -77,11 +77,11 @@ if ($Backend -eq 'piper') {
 if ($Piper) { $args += @('--piper', $Piper) }
 if ($PiperModel) { $args += @('--piper-model', $PiperModel) }
 
-Write-Host "tts-server baslatiliyor (backend=$Backend, lang=$Lang, device=$Device, $Bind`:$Port)"
+Write-Host "starting tts-server (backend=$Backend, lang=$Lang, device=$Device, $Bind`:$Port)"
 if ($Backend -eq 'piper') {
-    Write-Host "piper: ikili=$Piper ses=$PiperModel (yukleme yok; her istek ~0,3 sn)"
+    Write-Host "piper: binary=$Piper voice=$PiperModel (no loading; ~0.3 s per request)"
 } else {
-    Write-Host "model yukleniyor (torch+Chatterbox ~20 sn surebilir)..."
+    Write-Host "loading model (torch+Chatterbox can take ~20 s)..."
 }
 $proc = Start-Process -FilePath $Python -ArgumentList $args -WorkingDirectory $root `
     -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru -WindowStyle Hidden
@@ -100,10 +100,10 @@ while ((Get-Date) -lt $deadline) {
 }
 
 if ($ready) {
-    Write-Host "tts-server HAZIR: http://$Bind`:$Port/tts (yukleme $($h.load_seconds) sn)" -ForegroundColor Green
-    Write-Host "Kullanim: pwsh -File agent\pipeline.ps1 -TtsServerUrl http://$Bind`:$Port ..."
+    Write-Host "tts-server READY: http://$Bind`:$Port/tts (load $($h.load_seconds) s)" -ForegroundColor Green
+    Write-Host "Usage: pwsh -File agent\pipeline.ps1 -TtsServerUrl http://$Bind`:$Port ..."
     exit 0
 }
-Write-Host "tts-server hazir olmadi (cikis: $($proc.ExitCode)). Log: $errLog" -ForegroundColor Yellow
+Write-Host "tts-server did not become ready (exit: $($proc.ExitCode)). Log: $errLog" -ForegroundColor Yellow
 if (Test-Path -LiteralPath $errLog) { Get-Content -LiteralPath $errLog -Tail 10 }
 exit 1

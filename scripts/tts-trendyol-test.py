@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Trendyol-TTS (openbmb/VoxCPM2 + Turkce LoRA) hizli test betigi.
+"""Quick test script for Trendyol-TTS (openbmb/VoxCPM2 + Turkish LoRA).
 
-Amac: Turkce kalitesini degerlendirmek icin ornek uretmek.
+Purpose: generate a sample to evaluate Turkish quality.
 
-Kurulum (bir kez):
+Setup (one time):
     pip install voxcpm soundfile
 
-Kullanim:
+Usage:
     python scripts/tts-trendyol-test.py
-    python scripts/tts-trendyol-test.py --text "Baska bir cumle" --out logs/tts/trendyol-tr2.wav
+    python scripts/tts-trendyol-test.py --text "Another sentence" --out logs/tts/trendyol-tr2.wav
 
-Cikti: logs/tts/trendyol-tr.wav (+ JSON ozet stdout'a)
+Output: logs/tts/trendyol-tr.wav (+ JSON summary to stdout)
 
-Not: Trendyol-TTS Turkce-odaklidir (MIT, ~2B). Taban: openbmb/VoxCPM2.
+Note: Trendyol-TTS is Turkish-focused (MIT, ~2B). Base: openbmb/VoxCPM2.
 """
 from __future__ import annotations
 
@@ -39,8 +39,8 @@ def main() -> int:
         import soundfile as sf
         from voxcpm.core import VoxCPM
     except Exception as exc:
-        print(json.dumps({"ok": False, "error": f"bagimlilik eksik: {exc}",
-                          "ipucu": "pip install voxcpm soundfile"}, ensure_ascii=False, indent=2))
+        print(json.dumps({"ok": False, "error": f"missing dependency: {exc}",
+                          "hint": "pip install voxcpm soundfile"}, ensure_ascii=False, indent=2))
         return 3
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)

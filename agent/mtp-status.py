@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""mtp-durum.py -- Bir GGUF'un MTP/nextn basligi durumunu JSON olarak yazar.
+"""mtp-status.py -- Writes the MTP/nextn header status of a GGUF as JSON.
 
-`agent/mtp_inject.py`'nin basligini okur; enjeksiyon yapmaz. Kabuk betikleri
-(PowerShell) bu ciktiyi ayristirir. Boylece kod `python -c "..."` ile gecirilmez ve
-PowerShell'in tirnak/tirnak kacisi tuzagina dusulmez.
+Reads the header through `agent/mtp_inject.py`; does not inject. Shell scripts
+(PowerShell) parse this output. That way no code is passed via
+`python -c "..."` and PowerShell's quote/escape pitfall is avoided.
 
-Kullanim:
-  python agent/mtp-durum.py <gguf>
+Usage:
+  python agent/mtp-status.py <gguf>
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mtp_inject as m  # noqa: E402
 
 
-def durum(path: str) -> dict:
+def status(path: str) -> dict:
     version, meta, tensors, _data_start = m.read_header(path)
     d = {k: v for k, _t, v in meta}
     return {
@@ -37,13 +37,13 @@ def durum(path: str) -> dict:
 def main(argv=None) -> int:
     argv = list(argv if argv is not None else sys.argv[1:])
     if not argv:
-        print(json.dumps({"ok": False, "error": "kullanim: mtp-durum.py <gguf>"}))
+        print(json.dumps({"ok": False, "error": "usage: mtp-status.py <gguf>"}))
         return 2
     path = argv[0]
     if not os.path.exists(path):
-        print(json.dumps({"ok": False, "error": f"bulunamadi: {path}"}))
+        print(json.dumps({"ok": False, "error": f"not found: {path}"}))
         return 2
-    out = durum(path)
+    out = status(path)
     out["ok"] = True
     print(json.dumps(out, ensure_ascii=False, indent=2))
     return 0

@@ -5,20 +5,20 @@ Desktop.ini
 $RECYCLE.BIN/
 *.lnk
 
-# Loglar / geçici
+# Logs / temporary
 *.log
 logs/
 tmp/
 temp/
 *.tmp
 
-# Sırlar / ortam
+# Secrets / environment
 .env
 .env.*
 *.key
 secrets/
 
-# Model / ses dosyaları (repoda tutulmaz)
+# Model / audio files (not kept in the repo)
 models/
 tools/
 *.gguf
@@ -38,7 +38,7 @@ __pycache__/
 venv/
 .pytest_cache/
 
-# Editör
+# Editor
 .vscode/
 .idea/
 *.swp

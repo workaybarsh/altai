@@ -1,6 +1,6 @@
-"""asr-tools.py'nin saf (cevrimdisi) yardimcilarini dogrular.
+"""Verifies the pure (offline) helpers of asr-tools.py.
 
-Dosya adinda tire oldugu icin importlib ile yuklenir.
+Loaded with importlib because the file name contains a hyphen.
 """
 import importlib.util
 import json
@@ -47,11 +47,11 @@ def test_percentile_edges():
 def test_build_whisper_command():
     cmd = asr.build_whisper_command("whisper-cli", "m.bin", "a.wav", "tr", 6, ["--foo"])
     assert cmd[:2] == ["whisper-cli", "-m"]
-    assert "-nt" in cmd                      # zaman damgasi yok
+    assert "-nt" in cmd                      # no timestamps
     assert cmd[cmd.index("-l") + 1] == "tr"
     assert cmd[cmd.index("-t") + 1] == "6"
     assert cmd[-1] == "--foo"
-    # dil verilmezse 'auto'
+    # 'auto' when no language is given
     cmd2 = asr.build_whisper_command("w", "m", "f", None)
     assert cmd2[cmd2.index("-l") + 1] == "auto"
 
@@ -64,7 +64,7 @@ def test_prepare_wav_skips_conversion_when_already_16k_mono(tmp_path):
     p = make_wav(tmp_path / "b.wav", seconds=0.5, rate=16000, channels=1)
     out, err = asr.prepare_wav(p, str(tmp_path / "tmp"), ffmpeg="ffmpeg-yok")
     assert err is None
-    assert out == p                          # donusum gerekmedi, ayni yol
+    assert out == p                          # no conversion needed, same path
 
 
 def test_main_reports_missing_whisper(tmp_path, capsys):
@@ -96,15 +96,15 @@ def test_parse_whisper_timings_splits_load_and_infer():
 
 
 def test_build_whisper_command_threads_optional():
-    # thread verilmezse -t eklenmez (whisper varsayilani); verilirse eklenir
+    # if no thread count is given, -t is not added (whisper default); if given, it is added
     assert "-t" not in asr.build_whisper_command("w", "m", "f", "tr", None)
     assert "-t" in asr.build_whisper_command("w", "m", "f", "tr", 6)
 
 
 def test_server_mode_posts_multipart_and_needs_no_model(tmp_path, monkeypatch, capsys):
-    """whisper-server modu: --server-url verilince --model gerekmez; /inference'e multipart POST edilir.
+    """whisper-server mode: with --server-url no --model is needed; a multipart POST goes to /inference.
 
-    Gercek soket yerine urlopen taklit edilir (Windows loopback reset'lerinden bagimsiz, deterministik).
+    urlopen is stubbed instead of a real socket (deterministic, independent of Windows loopback resets).
     """
     import urllib.request
 

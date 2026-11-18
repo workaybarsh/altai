@@ -1,4 +1,4 @@
-"""pytest ortak kurulumu: depo kokunu ve agent/ klasorunu sys.path'e ekler."""
+"""Shared pytest setup: adds the repository root and the agent/ folder to sys.path."""
 import os
 import sys
 

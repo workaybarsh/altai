@@ -1,16 +1,16 @@
 <#
-    whisper-server.ps1 - whisper.cpp sunucusunu baslat/durdur (Altai)
+    whisper-server.ps1 - start/stop the whisper.cpp server (Altai)
 
-    Amac: modeli BELLEKTE tutmak. `whisper-cli` her cagride modeli yeniden yukler
-    (~0,5 sn q5_0 / ~1,4 sn f16); bu betikle tek yukleme olur ve her istek saf cikarimdir.
-    `asr-tools.py --server-url http://127.0.0.1:8081` bu sunucuya baglanir.
+    Purpose: keep the model IN MEMORY. `whisper-cli` reloads the model on every call
+    (~0.5 s q5_0 / ~1.4 s f16); with this script there is a single load and every request is pure inference.
+    `asr-tools.py --server-url http://127.0.0.1:8081` connects to this server.
 
-    Kullanim:
+    Usage:
       pwsh -File scripts\whisper-server.ps1 -Model models\ggml-large-v3-turbo-q5_0.bin
       pwsh -File scripts\whisper-server.ps1 -Stop
       pwsh -File scripts\whisper-server.ps1 -Model ... -Port 8081 -Threads 12
 
-    Not: Metinler ASCII tutuldu (Windows PowerShell 5.1 BOM'suz .ps1'i ANSI okur).
+    Note: text kept ASCII (Windows PowerShell 5.1 reads a BOM-less .ps1 as ANSI).
 #>
 param(
     [string]$Model = 'models\ggml-large-v3-turbo-q5_0.bin',
@@ -41,33 +41,33 @@ if ($Stop) {
     Get-Process whisper-server -ErrorAction SilentlyContinue | ForEach-Object {
         Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $stopped = $true
     }
-    if ($stopped) { Write-Host 'whisper-server durduruldu.' } else { Write-Host 'Calisan whisper-server yok.' }
+    if ($stopped) { Write-Host 'whisper-server stopped.' } else { Write-Host 'No whisper-server is running.' }
     exit 0
 }
 
-if (-not (Test-Path -LiteralPath $exe)) { throw "whisper-server bulunamadi: $exe" }
+if (-not (Test-Path -LiteralPath $exe)) { throw "whisper-server not found: $exe" }
 $modelPath = Join-Path $root $Model
-if (-not (Test-Path -LiteralPath $modelPath)) { throw "model bulunamadi: $modelPath" }
+if (-not (Test-Path -LiteralPath $modelPath)) { throw "model not found: $modelPath" }
 
 if ($Threads -le 0) { $Threads = [int]$env:NUMBER_OF_PROCESSORS }
 if ($Threads -le 0) { $Threads = 4 }
 
 $outLog = Join-Path $logRoot 'whisper-server.out.log'
 $errLog = Join-Path $logRoot 'whisper-server.err.log'
-# DIKKAT: repo yolu non-ASCII ('Varsayilan') icerebilir; Start-Process argumanina MUTLAK yol
-# vermek bu karakteri bozar -> whisper argv'de yanlis yol gorup coker. Cozum: calisma dizinini
-# repo yapip modeli GORELI yolla ver.
+# WARNING: the repo path may contain non-ASCII ('Varsayilan'); passing an ABSOLUTE path as a
+# Start-Process argument corrupts that character -> whisper sees a wrong path in argv and crashes.
+# Fix: make the working directory the repo and pass the model as a RELATIVE path.
 $modelRel = $Model -replace '/', '\'
 $argstr = "-m `"$modelRel`" -t $Threads -l $Language -ng --host $Bind --port $Port -nt"
 
-Write-Host "whisper-server baslatiliyor (model=$Model, threads=$Threads, $Bind`:$Port, CPU)"
+Write-Host "starting whisper-server (model=$Model, threads=$Threads, $Bind`:$Port, CPU)"
 $proc = Start-Process -FilePath $exe -ArgumentList $argstr -WorkingDirectory $root `
     -RedirectStandardOutput $outLog -RedirectStandardError $errLog `
     -PassThru -WindowStyle Hidden
 $proc.Id | Set-Content -LiteralPath $pidFile
 Write-Host "pid: $($proc.Id) (log: $errLog)"
 
-# hazir olana kadar bekle (en fazla ~40 sn)
+# wait until ready (at most ~40 s)
 $deadline = (Get-Date).AddSeconds(40)
 $ready = $false
 while ((Get-Date) -lt $deadline) {
@@ -77,10 +77,10 @@ while ((Get-Date) -lt $deadline) {
 }
 
 if ($ready) {
-    Write-Host "whisper-server HAZIR: http://$Bind`:$Port/inference" -ForegroundColor Green
-    Write-Host "Kullanim: python agent/asr-tools.py --wav <dosya> --server-url http://$Bind`:$Port"
+    Write-Host "whisper-server READY: http://$Bind`:$Port/inference" -ForegroundColor Green
+    Write-Host "Usage: python agent/asr-tools.py --wav <file> --server-url http://$Bind`:$Port"
     exit 0
 }
-Write-Host "whisper-server hazir olmadi (cikti kodu: $($proc.ExitCode)). Log: $errLog" -ForegroundColor Yellow
+Write-Host "whisper-server did not become ready (exit code: $($proc.ExitCode)). Log: $errLog" -ForegroundColor Yellow
 if (Test-Path -LiteralPath $errLog) { Get-Content -LiteralPath $errLog -Tail 10 }
 exit 1
