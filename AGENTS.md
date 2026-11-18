@@ -113,9 +113,9 @@ after the user stops speaking.
 | ✅ | `scripts/tts-server.ps1` | Resident TTS server (`tts-tools.py --serve`, port 8082); Chatterbox stays in memory · `-Backend piper` for **CPU Piper** (no loading) |
 | ✅ | `scripts/install-piper.ps1` | Installs Piper + the `tr_TR-dfki-medium` voice into an **ASCII directory** (`%LOCALAPPDATA%\altai\piper`; required because the repo path is non-ASCII) |
 | ✅ | `agent/tts-tools.py` | Swappable TTS: Chatterbox / **voxcpm** (Trendyol-TTS, TR) / **Piper** / SAPI + **batch mode** (`--batch-file`) + **persistent server** (`--serve`; chatterbox **or** piper) + **long-tail guard** (Chatterbox; duration limit + 1 retry; `--no-guard`) |
-| ✅ | `agent/pipeline.ps1` | Pipeline (**batch/reference path**): ASR → LLM (HTTP) → sentence splitting → **batch** TTS (single model load) |
+| ✅ | `agent/pipeline.ps1` | Pipeline (**batch/reference path**): ASR → LLM (HTTP) → sentence splitting → **batch**/**server** TTS; `-Ffmpeg` for ASR conversion, `-Piper`/`-PiperModel` for CPU TTS; the TTS server path now works for every backend |
 | ✅ | `agent/llm-stream.py` | **Streaming turn engine:** `llama-server` **SSE** → incremental sentence splitting → TTS per sentence → background playback; timestamped JSON (`reasoning_content` ignored, symbol-only skipped, 2 attempts on a transient network error) |
-| ✅ | `agent/pipeline-stream.ps1` | **Streaming** pipeline (ASR + `llm-stream.py`): emits the first audio early (principle #7) |
+| ✅ | `agent/pipeline-stream.ps1` | **Streaming** pipeline (ASR + `llm-stream.py`): emits the first audio early (principle #7); `-Ffmpeg` for ASR conversion |
 | ⬜ | `agent/audio-capture.ps1` | Dependency-free recording via winmm `mciSendString` |
 | ✅ | `tests/` | pytest (MTP injection + ASR tools) |
 | ✅ | `scripts/`, `docs/` | setup/diagnostics, documentation |
@@ -187,6 +187,13 @@ after the user stops speaking.
     (harmless, a little CPU). That is also why the tests look at the result per request rather than at the
     sequence number.
 
+18. **The CUDA build must match the GPU architecture.** On Blackwell (RTX 50xx, `sm_120`) the CUDA 12.4
+    llama.cpp build only runs through PTX JIT: measured **9.8 tok/s** generation and **1.4 tok/s** prompt
+    eval, while the CUDA 13.5 build of the same version gives **~91 tok/s** generation and **~135 tok/s**
+    prompt eval on the same model/flags (MTP acceptance ~0.56). On 50-series cards install
+    `llama-*-bin-win-cuda-13.5-x64.zip` + `cudart-*-cuda-13.5-x64.zip` and keep the CUDA runtime DLLs next
+    to `llama-server.exe`. (Measured 2026-11-19, RTX 5060 Ti 16 GB, driver 621.24.)
+
 ## 7. Change checklist
 
 - [ ] Is MTP still on? (Hard rule)
@@ -201,6 +208,7 @@ after the user stops speaking.
 
 | Date | Change | Files |
 |---|---|---|
+| 2026-11-19 | **Full hardware test on RTX 5060 Ti (16 GB, driver 621.24) and first real end-to-end runs.** LLM (CUDA 13.5 build, MTP on): **91.4 tok/s** generation, **135 tok/s** prompt eval, **TTFT 0.41 s**, MTP draft acceptance 0.56. Streaming pipeline: **FIRST AUDIO 1.045 s** with `-NoThink` (1.08 s text-only), **3.68 s** with reasoning on; ASR turbo on CPU **9.9–10.0 s** (RTF 1.45–1.46); Piper **RTF 0.21–0.27**; batch turn produced 5 WAVs in ~15 s. **Fixes found by the test:** `install-piper.ps1` flattens the release zip's `piper/` folder; `pipeline.ps1` gained `-Ffmpeg` and `-Piper`/`-PiperModel`, and its TTS server path now works for every backend; `pipeline-stream.ps1` gained `-Ffmpeg`. **New pitfall #18:** the CUDA 12.4 llama.cpp build on Blackwell runs at 9.8 tok/s while the CUDA 13.5 build does ~91 tok/s. **59 tests green.** | AGENTS.md, agent/pipeline.ps1, agent/pipeline-stream.ps1, scripts/install-piper.ps1 |
 | 2026-11-18 | **Repository fully translated into English; first tagged release (`v0.1.0`).** All documentation, code comments, docstrings, console/log messages and user-facing error text translated. Turkish document and tool names renamed: `DURUM.md`→`STATUS.md`, `BASLA.md`→`START.md`, `docs/mimari.md`→`docs/architecture.md`, `kararlar.md`→`decisions.md`, `mtp-dogrulama.md`→`mtp-verification.md`, `faz2-olcum-plani.md`→`phase2-measurement-plan.md`, `faz2-sonuc.md`→`phase2-results.md`, `tts-kiyaslama.md`→`tts-benchmark.md`, `tts-tr-sonuc.md`→`tts-tr-results.md`, `akishli-hat.md`→`streaming-pipeline.md`; `agent/mtp-durum.py`→`agent/mtp-status.py`, `scripts/mtp-dogrula.ps1`→`scripts/mtp-verify.ps1`, `scripts/asr-olcum.ps1`→`scripts/asr-benchmark.ps1`, `scripts/piper-kur.ps1`→`scripts/install-piper.ps1`. Turkish TTS test sentences and pronunciation examples kept verbatim. Token-level verification: only comments/strings changed, no code logic; **59 tests green**. | all |
 | 2026-10-21 | **Flaky server tests made resilient to retries.** Measurement: on Windows loopback **~30%** of consecutive HTTP requests fail with `WinError 10054` (RST); the same happens in a repro with a minimal stdlib server + raw socket → **environmental** (not server code). In the tests: a separate `prefix` per request + verification with a **last** call per request (when a retry synthesised the same batch a second time, the order-based assert slipped — `test_tts_server_passes_respell_switches_per_request`, `test_tts_server_piper_dispatch`) and 10 attempts in `_post_json`. Mutation check: the tests still catch it when the `tr_raw` wiring is broken and when the piper argument order is swapped. **59 tests, 10/10 green.** | tests/test_tts_tools.py, AGENTS.md |
 | 2026-10-21 | **Repository and product name became Altai** (`github.com/workaybarsh/altai`); the "local AI chatbot assistant" positioning was applied to the README/AGENTS headings, Piper directory `%LOCALAPPDATA%\altai\piper` (decision #25). | README.md, AGENTS.md, STATUS.md, START.md, docs/architecture.md, docs/decisions.md, agent/, scripts/ |

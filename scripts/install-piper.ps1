@@ -49,6 +49,13 @@ if (-not (Test-Path -LiteralPath $exe) -or $Force) {
     Write-Host '  extracting...'
     Expand-Archive -Path $zip -DestinationPath $Dir -Force
     Remove-Item -LiteralPath $zip -Force
+    # The release zip unpacks into a top-level 'piper' folder; flatten it so the
+    # binary ends up next to the voice file (tts-server.ps1 expects $Dir\piper.exe).
+    $nested = Join-Path $Dir 'piper'
+    if (Test-Path -LiteralPath $nested) {
+        Get-ChildItem -LiteralPath $nested -Force | Move-Item -Destination $Dir -Force
+        Remove-Item -LiteralPath $nested -Recurse -Force
+    }
 } else {
     Write-Host "  skipped (exists): $exe"
 }

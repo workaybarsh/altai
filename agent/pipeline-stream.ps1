@@ -26,6 +26,7 @@ param(
   [string]$Whisper,
   [string]$AsrServerUrl,
   [int]$AsrThreads = 0,
+[string]$Ffmpeg,
   [string]$Lang = "tr",
   [string]$TtsServerUrl,
   [string]$Python = "python",
@@ -57,6 +58,7 @@ if (-not $Text) {
     $asrArgs = @($asr, "--wav", $Wav, "--lang", $Lang, "--out", $asrJson)
     if ($AsrServerUrl) { $asrArgs += @("--server-url", $AsrServerUrl) } else { $asrArgs += @("--model", $Model) }
     if ($Whisper) { $asrArgs += @("--whisper", $Whisper) }
+    if ($Ffmpeg) { $asrArgs += @("--ffmpeg", $Ffmpeg) }
     if ($AsrThreads -gt 0) { $asrArgs += @("--threads", $AsrThreads) }
     $oldEap = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
