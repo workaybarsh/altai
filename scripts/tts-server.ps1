@@ -54,8 +54,15 @@ if ($Stop) {
 }
 
 if (-not (Test-Path -LiteralPath $tool)) { throw "tts-tools.py not found: $tool" }
-if (-not $Python) { $Python = Join-Path $env:USERPROFILE 'tts-venv\Scripts\python.exe' }
-if (-not (Test-Path -LiteralPath $Python)) { throw "Python not found: $Python (tts-venv)" }
+if (-not $Python) {
+    if ($Backend -eq 'piper') { $Python = 'python' }   # piper is stdlib-only (no torch/venv needed)
+    else { $Python = Join-Path $env:USERPROFILE 'tts-venv\Scripts\python.exe' }
+}
+if (-not (Test-Path -LiteralPath $Python)) {
+    $resolved = (Get-Command $Python -ErrorAction SilentlyContinue).Source
+    if ($resolved) { $Python = $resolved }
+    else { throw "Python not found: $Python (chatterbox/voxcpm need tts-venv; pass -Python)" }
+}
 
 $outLog = Join-Path $logRoot 'tts-server.out.log'
 $errLog = Join-Path $logRoot 'tts-server.err.log'

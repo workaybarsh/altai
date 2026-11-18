@@ -45,6 +45,9 @@ import wave
 
 DEFAULT_WHISPER = "whisper-cli"
 DEFAULT_TMP = os.path.join("logs", "asr-tmp")
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOCAL_WHISPER = os.path.join(REPO_ROOT, "tools", "whisper", "Release", "whisper-cli.exe")
+LOCAL_FFMPEG = os.path.join(REPO_ROOT, "tools", "ffmpeg", "ffmpeg.exe")
 
 
 # ---------------------------------------------------------------- pure helpers
@@ -129,7 +132,7 @@ def find_whisper(explicit: str | None = None):
         found = shutil.which(name)
         if found:
             return found
-    return None
+    return LOCAL_WHISPER if os.path.exists(LOCAL_WHISPER) else None
 
 
 def find_ffmpeg(explicit: str | None = None):
@@ -137,7 +140,10 @@ def find_ffmpeg(explicit: str | None = None):
         if os.path.sep in explicit or (os.altsep and os.altsep in explicit):
             return explicit if os.path.exists(explicit) else None
         return shutil.which(explicit)
-    return shutil.which("ffmpeg")
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    return LOCAL_FFMPEG if os.path.exists(LOCAL_FFMPEG) else None
 
 
 # ---------------------------------------------------------------- audio path

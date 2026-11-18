@@ -139,6 +139,23 @@ def is_speakable(text):
     return any(ch.isalnum() for ch in (text or ""))
 
 
+_MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]+\)")
+_MD_MARKS = re.compile(r"[*_`~]")
+_MD_PREFIX = re.compile(r"^\s{0,3}(?:#{1,6}\s+|>\s?|[-+]\s+)")
+
+
+def strip_markdown(text):
+    """Removes markdown noise (emphasis, code ticks, links, headings) before TTS.
+
+    The LLM sometimes answers with `**bold**` or a bullet list; a voice assistant must
+    read the words, not the markup.
+    """
+    t = _MD_LINK.sub(r"\1", text or "")
+    t = _MD_MARKS.sub("", t)
+    t = _MD_PREFIX.sub("", t)
+    return re.sub(r"\s{2,}", " ", t).strip()
+
+
 def iter_deltas(server, messages, max_tokens=1024, think=True, temperature=0.7,
                 timeout=300):
     """Yields the llama-server SSE stream as (kind, text).
@@ -285,6 +302,7 @@ def run(text, server, tts_server, out_dir, prefix="s_", lang=None, think=True,
             first_sentence = at
         emitted += 1                       # a failed sentence also consumes a number (so names do not collide)
         idx = emitted
+        sentence = strip_markdown(sentence)
         if not is_speakable(sentence):
             log(f"  [{idx}] (skipped: no letters/digits) {sentence!r}")
             return

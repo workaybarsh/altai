@@ -52,6 +52,16 @@ def test_is_speakable():
     assert not ls.is_speakable("")
 
 
+def test_strip_markdown():
+    assert ls.strip_markdown("**Merhaba** dünya") == "Merhaba dünya"
+    assert ls.strip_markdown("_eğik_ ve `kod`") == "eğik ve kod"
+    assert ls.strip_markdown("- madde bir") == "madde bir"
+    assert ls.strip_markdown("## Başlık") == "Başlık"
+    assert ls.strip_markdown("[bağlantı](https://example.com)") == "bağlantı"
+    assert ls.strip_markdown("  iki   boşluk ") == "iki boşluk"
+    assert ls.strip_markdown("") == ""
+
+
 def test_json_summary_is_utf8_literal(tmp_path):
     """--json-out must write UTF-8 with ensure_ascii=False (pitfall #14).
 

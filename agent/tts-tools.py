@@ -349,12 +349,26 @@ def synth_voxcpm(text, out_wav, model_id="Trendyol/Trendyol-TTS", cfg=2.0, times
 
 # ------------------------------------------------------------------ piper (fallback)
 
+def _local_piper(name):
+    """Default piper location installed by scripts/install-piper.ps1 (ASCII path)."""
+    base = os.environ.get("LOCALAPPDATA")
+    if not base:
+        return None
+    p = os.path.join(base, "altai", "piper", name)
+    return p if os.path.exists(p) else None
+
+
 def synth_piper(text, out_wav, model_path=None, piper_exe=None):
     import shutil
     import subprocess
-    exe = piper_exe or shutil.which("piper")
+    exe = piper_exe or shutil.which("piper") or _local_piper("piper.exe")
     if not exe:
-        raise RuntimeError("piper not found (pass PATH or --piper)")
+        raise RuntimeError("piper not found (pass PATH or --piper; see scripts/install-piper.ps1)")
+    if not os.path.exists(exe):
+        exe = shutil.which(exe)
+        if not exe:
+            raise RuntimeError(f"piper not found: {piper_exe}")
+    model_path = model_path or _local_piper("voice.onnx")
     if not model_path or not os.path.exists(model_path):
         raise RuntimeError(f"piper model not found: {model_path}")
     t0 = time.perf_counter()
@@ -432,9 +446,12 @@ def create_server(args):
                 # for piper no "model" is held in memory: each request runs a short-lived piper.exe
                 # (~0.27 s voice load). Only the binary + voice file are validated here.
                 import shutil
-                exe = args.piper or shutil.which("piper")
-                if not exe or not os.path.exists(exe):
+                exe = args.piper or shutil.which("piper") or _local_piper("piper.exe")
+                if exe and not os.path.exists(exe):
+                    exe = shutil.which(exe)
+                if not exe:
                     raise RuntimeError(f"piper not found (PATH or --piper): {args.piper}")
+                args.piper_model = args.piper_model or _local_piper("voice.onnx")
                 if not args.piper_model or not os.path.exists(args.piper_model):
                     raise RuntimeError(f"piper model not found: {args.piper_model}")
                 state["model"] = {"piper": exe}
