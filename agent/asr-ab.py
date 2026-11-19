@@ -11,12 +11,26 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import site
 import statistics
 import sys
 import time
 import wave
 
 import numpy as np
+
+# CTranslate2 loads its CUDA libraries from PATH; the nvidia-* wheels keep them in site-packages.
+for _base in {*site.getsitepackages(), site.getusersitepackages()}:
+    for _sub in (("nvidia", "cublas", "bin"), ("nvidia", "cudnn", "bin"), ("nvidia", "cuda_nvrtc", "bin")):
+        _d = os.path.join(_base, *_sub)
+        if os.path.isdir(_d):
+            os.environ["PATH"] = _d + os.pathsep + os.environ.get("PATH", "")
+            try:
+                os.add_dll_directory(_d)
+            except (AttributeError, OSError):
+                pass
+
 from faster_whisper import WhisperModel
 
 
