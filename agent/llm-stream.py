@@ -87,7 +87,7 @@ class SentenceBuffer:
     - A piece shorter than `min_chars` is not sent on its own (it merges with the next one).
     """
 
-    def __init__(self, min_chars=2, force_chars=180, soft_chars=120, first_chars=0):
+    def __init__(self, min_chars=2, force_chars=180, soft_chars=0, first_chars=0):
         self.buf = ""
         self.min_chars = min_chars
         self.force_chars = force_chars
@@ -333,7 +333,7 @@ class Player:
 
 def run(text, server, tts_server, out_dir, prefix="s_", lang=None, think=True,
         max_tokens=1024, system=None, play=False, force_chars=180,
-        soft_chars=120, first_chars=0, timeout=300, log=None):
+        soft_chars=0, first_chars=0, timeout=300, log=None):
     """Streaming turn: LLM stream -> sentences -> TTS -> (optional) playback. Returns a summary."""
     log = log or (lambda *a: None)
     system = system or (SYSTEM_EN if (lang or "").lower().startswith("en") else SYSTEM_TR)
@@ -468,7 +468,8 @@ def main(argv=None):
     ap.add_argument("--out-dir", default="logs/pipeline-stream")
     ap.add_argument("--prefix", default="s_")
     ap.add_argument("--force-chars", type=int, default=180)
-    ap.add_argument("--soft-chars", type=int, default=120)
+    ap.add_argument("--soft-chars", type=int, default=0,
+                    help="also split long sentences at a comma beyond this length (0 = sentence-only mode)")
     ap.add_argument("--first-chars", type=int, default=0,
                     help="cut the FIRST chunk early at a comma/space (chunked streaming; 0 = off)")
     ap.add_argument("--timeout", type=int, default=300)

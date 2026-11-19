@@ -125,6 +125,10 @@ second of audio (8 chars → 2.6 s, 30 chars → 3.45 s, 67 chars → 5.8 s). A 
 first-audio latency and adds a second call, while run-to-run variance (2.6–9 s) hides the gain.
 The option stays available but is **off by default**.
 
+**Chunk size.** The pipeline is **sentence-only** by default: a chunk is emitted at `.`/`!`/`?`
+(and flushed at the end), with no comma splitting (`--soft-chars 0`). A long sentence without
+punctuation is still cut at ~180 characters so it cannot block playback.
+
 ## 6. Known limits / next steps
 
 - One TTS request per sentence → as many requests as sentences; in a long response total TTS time may
