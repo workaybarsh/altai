@@ -25,6 +25,7 @@ param(
     [string]$TtsServerUrl = 'http://127.0.0.1:8082',
     [string]$LlmServerUrl = 'http://127.0.0.1:8080',
     [switch]$NoThink,
+    [int]$MaxTokens = 200,
     [switch]$KeepServices,
     [switch]$SelfTest,
     [string]$Wav
@@ -95,8 +96,9 @@ $loadBlock = {
             if (-not (Test-Path -LiteralPath (Join-Path $root $model))) { throw "Model not found: $model" }
             Start-Process -FilePath $llama -WorkingDirectory $root -WindowStyle Hidden `
                 -ArgumentList @('-m', $model, '-c', '4096', '-ngl', '99', '--host', '127.0.0.1',
-                    '--port', '8080', '--spec-type', 'draft-mtp', '--reasoning', 'on',
-                    '--reasoning-budget', '256') `
+                    '--port', '8080', '--parallel', '1', '-ctk', 'q8_0', '-ctv', 'q8_0',
+                    '--spec-type', 'draft-mtp', '--reasoning', 'on',
+                    '--reasoning-budget', '128', '--reasoning-format', 'deepseek') `
                 -RedirectStandardOutput (Join-Path $logs 'llama.out.log') `
                 -RedirectStandardError (Join-Path $logs 'llama.err.log') | Out-Null
         }
@@ -144,7 +146,7 @@ $loadBlock = {
 }
 
 $turnBlock = {
-    param($root, $wav, $state, $lang, $noThink, $asrUrl, $ttsUrl)
+    param($root, $wav, $state, $lang, $noThink, $fwUrl, $ttsUrl, $maxTokens)
 
     try {
         $state.Busy = $true
@@ -154,28 +156,29 @@ $turnBlock = {
         $state.Reply = ''
         $state.Latency = ''
 
-        $outDir = Join-Path $root ('logs\ui\turn-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+        $relOut = 'logs\ui\turn-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+        $outDir = Join-Path $root $relOut
         New-Item -ItemType Directory -Force -Path $outDir | Out-Null
         $script = Join-Path $root 'agent\pipeline-stream.ps1'
         $argv = @('-NoProfile', '-File', $script, '-Wav', $wav,
-            '-AsrServerUrl', $asrUrl, '-TtsServerUrl', $ttsUrl,
-            '-Lang', $lang, '-OutDir', $outDir, '-Play')
+            '-FwServerUrl', $fwUrl, '-TtsServerUrl', $ttsUrl,
+            '-Lang', $lang, '-OutDir', $relOut, '-MaxTokens', $maxTokens, '-Play')
         if ($noThink) { $argv += '-NoThink' }
 
         $log = Join-Path $outDir 'turn.log'
         & pwsh @argv *> $log
 
         $lines = Get-Content -LiteralPath $log -Encoding UTF8
-        $text = ($lines | Where-Object { $_ -match '^\[TEXT\]' } | Select-Object -First 1)
-        $reply = ($lines | Where-Object { $_ -match '^\[LLM\]' -and $_ -notmatch 'first chunk' } | Select-Object -First 1)
-        $lat = ($lines | Where-Object { $_ -match 'FIRST AUDIO' } | Select-Object -First 1)
-        $state.You = ($text -replace '^\[TEXT\]\s*', '').Trim()
-        $state.Reply = ($reply -replace '^\[LLM\]\s*', '').Trim()
+        $textLine = @($lines | Where-Object { $_ -match '^\[TEXT\]' })[0]
+        $replyLine = @($lines | Where-Object { $_ -match '^\[LLM\]' -and $_ -notmatch 'first chunk' })[0]
+        $latLine = @($lines | Where-Object { $_ -match 'FIRST AUDIO' })[0]
+        $state.You = if ($textLine) { ($textLine -replace '^\[TEXT\]\s*', '').Trim() } else { '' }
+        $state.Reply = if ($replyLine) { ($replyLine -replace '^\[LLM\]\s*', '').Trim() } else { '' }
         if (-not $state.Reply) {
             $err = ($lines | Where-Object { $_ -match 'TTS|error|Exception' } | Select-Object -Last 1)
             $state.Reply = "(no answer) $err"
         }
-        $state.Latency = if ($lat) { ($lat -replace '^\[STREAM\]\s*', '').Trim() } else { '' }
+        $state.Latency = if ($latLine) { ($latLine -replace '^\[STREAM\]\s*', '').Trim() } else { '' }
         $state.Msg = 'Ready. Click "Click to speak".'
     } catch {
         $state.Error = $_.Exception.Message
@@ -193,10 +196,10 @@ function Start-AltaiServices {
     return $job
 }
 
-function Invoke-AltaiTurn([string]$wavPath) {
-    $job = Start-ThreadJob -ArgumentList $turnBlock, $root, $wavPath, $state, $Lang, $NoThink.IsPresent, $AsrServerUrl, $TtsServerUrl -ScriptBlock {
-        param($blk, $r, $w, $s, $l, $nt, $a, $t)
-        & $blk $r $w $s $l $nt $a $t
+function Invoke-AltaiTurn([string]$wavPath, [bool]$think = $true) {
+    $job = Start-ThreadJob -ArgumentList $turnBlock, $root, $wavPath, $state, $Lang, (-not $think), $FwServerUrl, $TtsServerUrl, $MaxTokens -ScriptBlock {
+        param($blk, $r, $w, $s, $l, $nt, $a, $t, $mt)
+        & $blk $r $w $s $l $nt $a $t $mt
     }
     return $job
 }
@@ -204,7 +207,7 @@ function Invoke-AltaiTurn([string]$wavPath) {
 function Stop-AltaiServices {
     $state.Stopping = $true
     Get-Process -Name 'llama-server' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    foreach ($s in 'tts-server.ps1', 'whisper-server.ps1') {
+    foreach ($s in 'tts-server.ps1', 'fw-server.ps1', 'whisper-server.ps1') {
         $p = Join-Path $root "scripts\$s"
         if (Test-Path -LiteralPath $p) { & pwsh -NoProfile -File $p -Stop 2>$null | Out-Null }
     }
@@ -257,7 +260,7 @@ if ($SelfTest) {
     & $loadBlock $root $state $Backend $Python $Lang
     if (-not $state.Ready) { throw "Services not ready: $($state.Error)" }
     Write-Host '[selftest] running one turn...'
-    & $turnBlock $root (Resolve-Path -LiteralPath $Wav).Path $state $Lang $NoThink.IsPresent $AsrServerUrl $TtsServerUrl
+    & $turnBlock $root (Resolve-Path -LiteralPath $Wav).Path $state $Lang $NoThink.IsPresent $FwServerUrl $TtsServerUrl $MaxTokens
     Write-Host "TRANSCRIPT: $($state.You)"
     Write-Host "REPLY: $($state.Reply)"
     Write-Host "LATENCY: $($state.Latency)"
@@ -409,7 +412,7 @@ $talkBtn.Add_Click({
         return
     }
     $log.AppendText("(recorded $([math]::Round((Get-Item -LiteralPath $wavPath).Length / 1KB)) KB)`r`n")
-    Invoke-AltaiTurn $wavPath | Out-Null
+    Invoke-AltaiTurn $wavPath $thinkBox.Checked | Out-Null
 })
 
 $timer = New-Object System.Windows.Forms.Timer

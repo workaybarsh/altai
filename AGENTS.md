@@ -102,7 +102,7 @@ after the user stops speaking.
 
 | Status | Path | Content |
 |---|---|---|
-| ⬜ | `altai-desktop.ps1` | Main app: WinForms UI, chat state, event loop |
+| ⬜ | `altai-desktop.ps1` | **Desktop app**: WinForms UI - "Load models" (llama-server + fw-server + Chatterbox), "Click to speak", VRAM readout, full cleanup on close (`-SelfTest` for headless runs) |
 | ⬜ | `agent/llm-run.ps1` | Start/stop `llama-server`, MTP, VRAM gate |
 | ✅ | `agent/mtp_inject.py` | Adds the MTP/`nextn` head to a quant GGUF (from the base `huihui-ai` repository) |
 | ✅ | `agent/mtp-status.py` | Writes a GGUF's MTP status as JSON |
@@ -116,7 +116,9 @@ after the user stops speaking.
 | ✅ | `agent/pipeline.ps1` | Pipeline (**batch/reference path**): ASR → LLM (HTTP) → sentence splitting → **batch**/**server** TTS; `-Ffmpeg` for ASR conversion, `-Piper`/`-PiperModel` for CPU TTS; the TTS server path now works for every backend |
 | ✅ | `agent/llm-stream.py` | **Streaming turn engine:** `llama-server` **SSE** → incremental sentence splitting → TTS per sentence → background playback; timestamped JSON (`reasoning_content` ignored, symbol-only skipped, 2 attempts on a transient network error) |
 | ✅ | `agent/pipeline-stream.ps1` | **Streaming** pipeline (ASR + `llm-stream.py`): emits the first audio early (principle #7); `-Ffmpeg` for ASR conversion |
-| ⬜ | `agent/audio-capture.ps1` | Dependency-free recording via winmm `mciSendString` |
+| ⬜ | `agent/audio-capture.ps1` | Microphone capture: **ffmpeg dshow** -> 16 kHz mono 16-bit WAV (MCI fallback); device picker saved in `%LOCALAPPDATA%\altai\mic.txt` |
+| `agent/fw-server.py` + `scripts/fw-server.ps1` | Persistent **faster-whisper (GPU)** STT server (port 8083, int8_float16, `/health` + `/transcribe`); warm-up on load |
+| `scripts/measure-turn.ps1` | Timing harness: speech end -> first audio -> playback end -> next turn (wall-clock events from `llm-stream.py`) |
 | ✅ | `tests/` | pytest (MTP injection + ASR tools) |
 | ✅ | `scripts/`, `docs/` | setup/diagnostics, documentation |
 
@@ -194,6 +196,28 @@ after the user stops speaking.
     `llama-*-bin-win-cuda-13.5-x64.zip` + `cudart-*-cuda-13.5-x64.zip` and keep the CUDA runtime DLLs next
     to `llama-server.exe`. (Measured 2026-11-19, RTX 5060 Ti 16 GB, driver 621.24.)
 
+19. **Never start a second server for the same model.** Two Chatterbox processes or two
+    `fw-server.py` instances silently double VRAM. Check the **process list**, not only the port: while a
+    model loads the HTTP port is not bound yet, and `tts-server.ps1 -Stop` used to leave orphans. Note
+    that a venv `python.exe` is a **launcher**: `python.exe` (4 MB) plus the real interpreter as its child
+    are **one** server, not two.
+
+20. **Chatterbox hardcodes `max_new_tokens=1000`.** A short sentence ("Merhaba!") can therefore spend
+    6-16 s before EOS. Budget the sampler from the expected duration (~30 tokens/s) in
+    `synth_chatterbox`; measured effect: worst case ~16 s -> ~3 s. Do not lower it blindly: too small a
+    budget cuts the utterance.
+
+21. **Thinking text leaks into the answer unless the server uses `--reasoning-format deepseek`.**
+    With `--reasoning on` and the default format, Qwen3.5 sometimes emits its self-check ("Wait, let's
+    count again...") as **content**, which then goes to TTS. Use `--reasoning on --reasoning-budget 128
+    --reasoning-format deepseek`; `llm-stream.py` ignores `reasoning_content` and only speaks `content`.
+
+22. **VRAM tuning (16 GB profile).** Measured: LLM ~7.0 GB with `-c 4096 --parallel 1 -ctk q8_0
+    -ctv q8_0` (0.75 GB less than the default KV setup, same ~85-91 tok/s), STT (int8_float16)
+    ~1.2 GB, Chatterbox **~3.3 GB** (fp32 floor; `half()` fails with "mat1 and mat2 must have the same
+    dtype"). Total ~11.6 GB. Free the warm-up arena with `torch.cuda.empty_cache()` and set
+    `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`; without them the process sat ~15.6 GB.
+
 ## 7. Change checklist
 
 - [ ] Is MTP still on? (Hard rule)
@@ -208,6 +232,7 @@ after the user stops speaking.
 
 | Date | Change | Files |
 |---|---|---|
+| 2026-11-19 | **GPU-resident stack and desktop UI.** LLM 9B + MTP (~7.0 GB with `--parallel 1 -ctk q8_0 -ctv q8_0`), faster-whisper turbo on CUDA (~1.2 GB, RTF 0.04-0.10), Chatterbox on GPU (~3.3 GB, TF32, sampler cap, warm-up) -> **~11.6 GB total** on the 16 GB card. New: `altai-desktop.ps1` (Load models -> click to speak, VRAM readout, cleanup on close), `agent/audio-capture.ps1` (ffmpeg dshow 16 kHz mono; the MCI default was 11 kHz/8-bit), `agent/fw-server.py` + `scripts/fw-server.ps1` (persistent GPU STT), `scripts/measure-turn.ps1` (timeline). Voice-first system prompts (TR/EN, max 2 sentences) and `--reasoning-format deepseek` so thinking text cannot leak into TTS. Measured: first audio **~4.9-7.2 s** (Chatterbox's first sentence is 3-5 s), ASR 0.5 s, LLM TTFT 0.25-0.4 s. **60 tests.** | altai-desktop.ps1, agent/, scripts/, AGENTS.md |
 | 2026-11-19 | **Full hardware test on RTX 5060 Ti (16 GB, driver 621.24) and first real end-to-end runs.** LLM (CUDA 13.5 build, MTP on): **91.4 tok/s** generation, **135 tok/s** prompt eval, **TTFT 0.41 s**, MTP draft acceptance 0.56. Streaming pipeline: **FIRST AUDIO 1.045 s** with `-NoThink` (1.08 s text-only), **3.68 s** with reasoning on; ASR turbo on CPU **9.9–10.0 s** (RTF 1.45–1.46); Piper **RTF 0.21–0.27**; batch turn produced 5 WAVs in ~15 s. **Fixes found by the test:** `install-piper.ps1` flattens the release zip's `piper/` folder; `pipeline.ps1` gained `-Ffmpeg` and `-Piper`/`-PiperModel`, and its TTS server path now works for every backend; `pipeline-stream.ps1` gained `-Ffmpeg`. **New pitfall #18:** the CUDA 12.4 llama.cpp build on Blackwell runs at 9.8 tok/s while the CUDA 13.5 build does ~91 tok/s. **59 tests green.** | AGENTS.md, agent/pipeline.ps1, agent/pipeline-stream.ps1, scripts/install-piper.ps1 |
 | 2026-11-18 | **Repository fully translated into English; first tagged release (`v0.1.0`).** All documentation, code comments, docstrings, console/log messages and user-facing error text translated. Turkish document and tool names renamed: `DURUM.md`→`STATUS.md`, `BASLA.md`→`START.md`, `docs/mimari.md`→`docs/architecture.md`, `kararlar.md`→`decisions.md`, `mtp-dogrulama.md`→`mtp-verification.md`, `faz2-olcum-plani.md`→`phase2-measurement-plan.md`, `faz2-sonuc.md`→`phase2-results.md`, `tts-kiyaslama.md`→`tts-benchmark.md`, `tts-tr-sonuc.md`→`tts-tr-results.md`, `akishli-hat.md`→`streaming-pipeline.md`; `agent/mtp-durum.py`→`agent/mtp-status.py`, `scripts/mtp-dogrula.ps1`→`scripts/mtp-verify.ps1`, `scripts/asr-olcum.ps1`→`scripts/asr-benchmark.ps1`, `scripts/piper-kur.ps1`→`scripts/install-piper.ps1`. Turkish TTS test sentences and pronunciation examples kept verbatim. Token-level verification: only comments/strings changed, no code logic; **59 tests green**. | all |
 | 2026-10-21 | **Flaky server tests made resilient to retries.** Measurement: on Windows loopback **~30%** of consecutive HTTP requests fail with `WinError 10054` (RST); the same happens in a repro with a minimal stdlib server + raw socket → **environmental** (not server code). In the tests: a separate `prefix` per request + verification with a **last** call per request (when a retry synthesised the same batch a second time, the order-based assert slipped — `test_tts_server_passes_respell_switches_per_request`, `test_tts_server_piper_dispatch`) and 10 attempts in `_post_json`. Mutation check: the tests still catch it when the `tr_raw` wiring is broken and when the piper argument order is swapped. **59 tests, 10/10 green.** | tests/test_tts_tools.py, AGENTS.md |

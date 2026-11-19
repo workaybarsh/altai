@@ -7,6 +7,15 @@
 **Altai** — local AI chatbot assistant. A **fully local**, voice (STT + TTS) AI chat assistant on Windows.
 Repo: `github.com/workaybarsh/altai`
 
+## Current setup (2026-11-19) — GPU stack
+- **LLM:** `llama-server` (CUDA 13.5 build), 9B i1-Q5_K_M + MTP, `-c 4096 --parallel 1 -ctk q8_0 -ctv q8_0 --reasoning on --reasoning-budget 128 --reasoning-format deepseek` → ~7.0 GB
+- **STT:** `agent/fw-server.py` (faster-whisper large-v3-turbo, int8_float16, CUDA, port 8083) → ~1.2 GB, RTF 0.04-0.10
+- **TTS:** Chatterbox v3 (GPU, `-Tf32`, warm-up, sampler cap), port 8082 → ~3.3 GB, RTF 1.1-1.4
+- **UI:** `altai-desktop.ps1` — "Load models" then "Click to speak"; every service stops when the window closes
+- **Mic:** `agent/audio-capture.ps1` via ffmpeg dshow (16 kHz mono 16-bit)
+- **Measured:** first audio ~5 s (Chatterbox's first sentence dominates), ASR 0.5 s, LLM TTFT ~0.3 s, total ~11.6 GB VRAM
+- **Tests:** 60 pytest tests; `scripts/measure-turn.ps1` for the timing timeline
+
 ## Completed
 - Architecture + decisions: `docs/architecture.md`, `docs/decisions.md`
 - **MTP tools:** `agent/mtp_inject.py`, `agent/mtp-status.py`, `scripts/mtp-verify.ps1` + tests

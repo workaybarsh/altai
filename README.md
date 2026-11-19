@@ -9,6 +9,25 @@ you speak into the microphone and the assistant answers **out loud**.
 > Repository: `github.com/workaybarsh/altai` — former name `aybars_speaks`; old links keep
 > working through GitHub redirects (decision #25).
 
+## Quick start (GPU stack, 16 GB card)
+
+```powershell
+# Everything at once: loads llama-server, the faster-whisper server and Chatterbox,
+# then "Click to speak" records and answers. Closing the window stops every service.
+pwsh -File altai-desktop.ps1
+```
+
+Manual start (same order):
+
+```powershell
+pwsh -File scripts\fw-server.ps1                     # GPU STT  :8083 (~1.2 GB)
+pwsh -File scripts\tts-server.ps1 -Backend chatterbox -Lang tr -Tf32 -Python "$env:USERPROFILE\tts-venv\Scripts\python.exe"   # TTS :8082 (~3.3 GB)
+.\tools\llama\llama-server.exe -m models\Huihui-Qwen3.5-9B-abliterated.i1-Q5_K_M.gguf -c 4096 -ngl 99 --parallel 1 -ctk q8_0 -ctv q8_0 --host 127.0.0.1 --port 8080 --spec-type draft-mtp --reasoning on --reasoning-budget 128 --reasoning-format deepseek
+```
+
+Measured on an RTX 5060 Ti 16 GB: ASR 0.3-0.5 s, LLM TTFT ~0.3 s, Chatterbox RTF 1.1-1.4,
+first audio ~5 s, ~11.6 GB VRAM. The CPU-only path (whisper.cpp + Piper) is still supported.
+
 ## Status
 
 **Draft (planning) — `v0.2-plan`. Working tools: `agent/mtp_inject.py`, `agent/asr-tools.py`,

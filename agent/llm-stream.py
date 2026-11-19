@@ -35,7 +35,29 @@ try:
 except Exception:
     pass
 
-SYSTEM_TR = "Sen kisa ve dogal Turkce cevap veren bir sesli asistansin."
+SYSTEM_TR = (
+    "Sen Altai'sın: tamamen yerel çalışan, Türkçe konuşan bir sesli asistansın. "
+    "Yanıtların hoparlörden sesli okunacak. Bu yüzden:\n"
+    "- En fazla 2 cümle, yaklaşık 25 kelime yaz.\n"
+    "- Konuşma dilinde, doğal ve akıcı ol; yazı dili kalıpları kullanma.\n"
+    "- Madde işareti, başlık, emoji, kod, parantez, tırnak ve markdown kullanma.\n"
+    "- Sayıları ve kısaltmaları yazıyla söyle (örnek: '3' değil 'üç', 'vb.' değil 've benzeri').\n"
+    "- 'Elbette', 'Tabii ki', 'Harika soru' gibi gereksiz girişler yapma; doğrudan yanıtla.\n"
+    "- Emin değilsen tek cümlelik kısa bir netleştirme sorusu sor.\n"
+    "- Kullanıcı hangi dilde konuşursa o dilde yanıt ver."
+)
+
+SYSTEM_EN = (
+    "You are Altai, a fully local voice assistant. Your replies are read aloud through a "
+    "speaker, so:\n"
+    "- Use at most 2 sentences, about 25 words.\n"
+    "- Write in spoken language, natural and fluent; avoid written-style phrasing.\n"
+    "- Do not use bullets, headings, emoji, code, parentheses, quotes or markdown.\n"
+    "- Spell out numbers and abbreviations (say 'three', not '3').\n"
+    "- No filler openers such as 'Sure' or 'Great question'; answer directly.\n"
+    "- If unsure, ask one short clarifying question.\n"
+    "- Reply in the language the user speaks."
+)
 
 # Retryable (transient) network errors: Windows loopback RST, dropped connection,
 # half-read body. HTTP errors (4xx/5xx) are NOT listed here: those are request rejections.
@@ -287,10 +309,11 @@ class Player:
 
 
 def run(text, server, tts_server, out_dir, prefix="s_", lang=None, think=True,
-        max_tokens=1024, system=SYSTEM_TR, play=False, force_chars=180,
+        max_tokens=1024, system=None, play=False, force_chars=180,
         soft_chars=120, timeout=300, log=None):
     """Streaming turn: LLM stream -> sentences -> TTS -> (optional) playback. Returns a summary."""
     log = log or (lambda *a: None)
+    system = system or (SYSTEM_EN if (lang or "").lower().startswith("en") else SYSTEM_TR)
     os.makedirs(out_dir, exist_ok=True)
     t0 = time.perf_counter()
     _event("turn_start")
@@ -415,7 +438,8 @@ def main(argv=None):
     ap.add_argument("--server", default="http://127.0.0.1:8080")
     ap.add_argument("--tts-server", required=True)
     ap.add_argument("--lang", default=None)
-    ap.add_argument("--system", default=SYSTEM_TR)
+    ap.add_argument("--system", default=None,
+                    help="system prompt (default: built-in TR/EN prompt chosen by --lang)")
     ap.add_argument("--max-tokens", type=int, default=1024)
     ap.add_argument("--no-think", action="store_true")
     ap.add_argument("--out-dir", default="logs/pipeline-stream")

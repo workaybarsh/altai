@@ -94,7 +94,7 @@ Write-Host "[TEXT] $Text"
 # --- 2) LLM: response (llama-server, OpenAI compatible) ---
 $payload = @{
     messages    = @(
-        @{ role = "system"; content = "Sen kisa ve dogal Turkce cevap veren bir sesli asistansin." },
+        @{ role = "system"; content = "Sen Altai'sin: tamamen yerel calisan, Turkce konusan bir sesli asistansin. En fazla 2 cumle yaz; madde isareti, emoji ve markdown kullanma; sayilari ve kisaltmalari yaziyla soyle." },
         @{ role = "user"; content = $Text }
     )
     max_tokens  = $MaxTokens
