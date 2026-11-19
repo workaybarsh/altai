@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import wave
@@ -221,6 +222,12 @@ def load_chatterbox(lang=None, device="cuda", t3_model="v3"):
     return ChatterboxTTS.from_pretrained(device=device)
 
 
+def _clean_for_tts(text: str) -> str:
+    """Removes punctuation Chatterbox chokes on (quotes, brackets, colons) for a retry."""
+    cleaned = re.sub(r"[\"'“”‘’«»\(\)\[\]\{\}:;]", " ", text or "")
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
+
+
 def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
                      exaggeration=0.5, cfg=0.5, t3_model="v3", seed=None, tr_fix=True,
                      respell=True, model=None, guard=True, softg=True):
@@ -275,14 +282,26 @@ def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
 
         if t3 is not None and original is not None:
             t3.inference = capped
-        try:
+
+        def _generate(speak_text):
             try:
-                wav = model.generate(text, **{**kwargs, "exaggeration": exaggeration, "cfg_weight": cfg})
+                return model.generate(speak_text, **{**kwargs, "exaggeration": exaggeration, "cfg_weight": cfg})
             except TypeError:
                 try:
-                    wav = model.generate(text, **{**kwargs, "exaggeration": exaggeration})
+                    return model.generate(speak_text, **{**kwargs, "exaggeration": exaggeration})
                 except TypeError:
-                    wav = model.generate(text, **kwargs)
+                    return model.generate(speak_text, **kwargs)
+
+        try:
+            try:
+                wav = _generate(text)
+            except IndexError:
+                # Chatterbox can raise "max(): Expected reduction dim to have non-zero size" on
+                # sentences with quotes/colons or unusual punctuation. Retry once without them.
+                cleaned = _clean_for_tts(text)
+                if not cleaned or cleaned == text:
+                    raise
+                wav = _generate(cleaned)
         finally:
             if t3 is not None and original is not None:
                 t3.inference = original

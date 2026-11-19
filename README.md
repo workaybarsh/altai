@@ -38,6 +38,8 @@ and the binaries in `tools/` (both git-ignored), plus two virtual environments:
 - `%USERPROFILE%\tts-venv` — `torch` (cu128), `chatterbox-tts`, `soundfile`
 - `%USERPROFILE%\fw-venv` — `faster-whisper`
 
+First run on a new machine: `pwsh -File scripts\setup.ps1` (venvs, binaries, models, MTP header).
+
 ```powershell
 # Everything at once (recommended)
 pwsh -File altai-desktop.ps1

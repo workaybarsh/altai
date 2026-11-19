@@ -161,6 +161,24 @@ def to_wav_16k_mono(src: str, dst: str, ffmpeg: str | None = None):
     return dst, None
 
 
+def wav_energy(path: str):
+    """Returns (duration_seconds, rms_level) for a PCM WAV (rms in 0..1)."""
+    try:
+        with wave.open(path, "rb") as w:
+            sr = w.getframerate() or 1
+            frames = w.getnframes()
+            width = w.getsampwidth()
+            data = w.readframes(frames)
+        duration = frames / float(sr)
+        if not data or width != 2:
+            return duration, 0.0 if not data else 1.0
+        import audioop
+        rms = audioop.rms(data, 2) / 32768.0
+        return duration, rms
+    except Exception:
+        return 0.0, 0.0
+
+
 def prepare_wav(src: str, workdir: str, ffmpeg: str | None = None):
     """Leaves the file untouched if it is already 16 kHz mono; otherwise converts it.
 
@@ -358,6 +376,12 @@ def main(argv=None) -> int:
     ap.add_argument("--threads", type=int, default=None,
                     help="whisper.cpp -t value (default: logical core count)")
     ap.add_argument("--repeat", type=int, default=1)
+    ap.add_argument("--min-seconds", type=float, default=0.3,
+                    help="reject clips shorter than this (speech gate; default 0.3 s)")
+    ap.add_argument("--min-rms", type=float, default=0.004,
+                    help="reject clips quieter than this RMS level (default 0.004)")
+    ap.add_argument("--allow-silence", action="store_true",
+                    help="disable the speech gate (send silence to the model anyway)")
     ap.add_argument("--out", default=None, help="JSON output file")
     ap.add_argument("--tmp", default=DEFAULT_TMP, help="temporary folder for conversion")
     args = ap.parse_args(argv)
@@ -391,6 +415,15 @@ def main(argv=None) -> int:
         if err:
             errors.append({"file": f, "error": err})
             continue
+        if not args.allow_silence:
+            duration, rms = wav_energy(wav)
+            if duration < args.min_seconds or rms < args.min_rms:
+                errors.append({
+                    "file": f,
+                    "error": f"no speech detected (duration {duration:.2f}s, rms {rms:.4f})",
+                    "skipped": True,
+                })
+                continue
         try:
             results.append(benchmark_file(whisper, args.model, wav, args.lang,
                                           threads, args.repeat, server_url=args.server_url,
@@ -418,6 +451,8 @@ def main(argv=None) -> int:
             "median_infer": round(percentile(infer_all, 0.5), 4) if infer_all else None,
         },
     }
+    if not results and errors and all(e.get("skipped") for e in errors):
+        payload["error"] = "no speech detected (silence or noise)"
     _emit(payload, args.out)
     return 0 if results else 5
 

@@ -100,7 +100,7 @@ after the user stops speaking.
 
 | Status | Path | Content |
 |---|---|---|
-| ⬜ | `altai-desktop.ps1` | **Desktop app**: WinForms UI - "Load models" (llama-server + fw-server + Chatterbox), "Click to speak", VRAM readout, full cleanup on close (`-SelfTest` for headless runs) |
+| ⬜ | `altai-desktop.ps1` | **Desktop app**: WinForms UI - "Load models" (llama-server + fw-server + Chatterbox), "Click to speak" / Ctrl+Space, microphone picker, auto-load, TTFA + VRAM readout, full cleanup on close (`-SelfTest` for headless runs) |
 | ⬜ | `agent/llm-run.ps1` | Start/stop `llama-server`, MTP, VRAM gate |
 | ✅ | `agent/mtp_inject.py` | Adds the MTP/`nextn` head to a quant GGUF (from the base `huihui-ai` repository) |
 | ✅ | `agent/mtp-status.py` | Writes a GGUF's MTP status as JSON |
@@ -114,8 +114,9 @@ after the user stops speaking.
 | ✅ | `agent/llm-stream.py` | **Streaming turn engine:** `llama-server` **SSE** → incremental sentence splitting → TTS per sentence → background playback; timestamped JSON (`reasoning_content` ignored, symbol-only skipped, 2 attempts on a transient network error) |
 | ✅ | `agent/pipeline-stream.ps1` | **Streaming** pipeline (ASR + `llm-stream.py`): emits the first audio early (principle #7); `-Ffmpeg` for ASR conversion |
 | ⬜ | `agent/audio-capture.ps1` | Microphone capture: **ffmpeg dshow** -> 16 kHz mono 16-bit WAV (MCI fallback); device picker saved in `%LOCALAPPDATA%\altai\mic.txt` |
-| `agent/fw-server.py` + `scripts/fw-server.ps1` | Persistent **faster-whisper (GPU)** STT server (port 8083, int8_float16, `/health` + `/transcribe`); warm-up on load |
+| `agent/fw-server.py` + `scripts/fw-server.ps1` | Persistent **faster-whisper (GPU)** STT server (port 8083, int8_float16, Silero VAD on) + `/health` + `/transcribe`; warm-up on load |
 | `scripts/measure-turn.ps1` | Timing harness: speech end -> first audio -> playback end -> next turn (wall-clock events from `llm-stream.py`) |
+| `scripts/setup.ps1` | One-shot Windows setup: venvs, llama.cpp CUDA 13.5, ffmpeg, models, MTP injection |
 | ✅ | `tests/` | pytest (MTP injection + ASR tools) |
 | ✅ | `scripts/`, `docs/` | setup/diagnostics, documentation |
 
@@ -226,6 +227,7 @@ after the user stops speaking.
 
 | Date | Change | Files |
 |---|---|---|
+| 2026-11-19 | **Speech gate + UI polish + setup script.** faster-whisper now runs with **Silero VAD** (`--no-vad` to disable) and `asr-tools.py` rejects silent/too-short clips before the model (`--min-seconds`, `--min-rms`, `--allow-silence`) with a clear "no speech detected" message that stops the pipeline before the LLM. Desktop UI gained a microphone picker, "Load on start", Ctrl+Space, a TTFA badge and "Clear chat". TTS retries an `IndexError` sentence once after stripping quotes/colons. New `scripts/setup.ps1` (venvs, llama.cpp CUDA 13.5, ffmpeg, models, MTP). **61 tests.** | agent/, scripts/, altai-desktop.ps1 |
 | 2026-11-19 | **GPU-resident stack and desktop UI.** LLM 9B + MTP (~7.0 GB with `--parallel 1 -ctk q8_0 -ctv q8_0`), faster-whisper turbo on CUDA (~1.2 GB, RTF 0.04-0.10), Chatterbox on GPU (~3.3 GB, TF32, sampler cap, warm-up) -> **~11.6 GB total** on the 16 GB card. New: `altai-desktop.ps1` (Load models -> click to speak, VRAM readout, cleanup on close), `agent/audio-capture.ps1` (ffmpeg dshow 16 kHz mono; the MCI default was 11 kHz/8-bit), `agent/fw-server.py` + `scripts/fw-server.ps1` (persistent GPU STT), `scripts/measure-turn.ps1` (timeline). Voice-first system prompts (TR/EN, max 2 sentences) and `--reasoning-format deepseek` so thinking text cannot leak into TTS. Measured: first audio **~4.9-7.2 s** (Chatterbox's first sentence is 3-5 s), ASR 0.5 s, LLM TTFT 0.25-0.4 s. **60 tests.** | altai-desktop.ps1, agent/, scripts/, AGENTS.md |
 | 2026-11-19 | **Full hardware test on RTX 5060 Ti (16 GB, driver 621.24).** LLM (CUDA 13.5 build, MTP on): **91.4 tok/s** generation, **135 tok/s** prompt eval, **TTFT 0.41 s**, MTP draft acceptance 0.56. Streaming pipeline: **FIRST AUDIO 1.045 s** with `-NoThink`. **Fixes found by the test:** `pipeline.ps1` and `pipeline-stream.ps1` gained `-Ffmpeg`, and the TTS server path works for every backend. **New pitfall #18:** the CUDA 12.4 llama.cpp build on Blackwell runs at 9.8 tok/s while the CUDA 13.5 build does ~91 tok/s. | AGENTS.md, agent/pipeline.ps1, agent/pipeline-stream.ps1 |
 | 2026-11-18 | **Repository fully translated into English; first tagged release (`v0.1.0`).** All documentation, code comments, docstrings, console/log messages and user-facing error text translated. Turkish document and tool names renamed: `DURUM.md`→`STATUS.md`, `BASLA.md`→`START.md`, `docs/mimari.md`→`docs/architecture.md`, `kararlar.md`→`decisions.md`, `mtp-dogrulama.md`→`mtp-verification.md`, `faz2-olcum-plani.md`→`phase2-measurement-plan.md`, `faz2-sonuc.md`→`phase2-results.md`, `tts-kiyaslama.md`→`tts-benchmark.md`, `tts-tr-sonuc.md`→`tts-tr-results.md`, `akishli-hat.md`→`streaming-pipeline.md`; `agent/mtp-durum.py`→`agent/mtp-status.py`, `scripts/mtp-dogrula.ps1`→`scripts/mtp-verify.ps1`, `scripts/asr-olcum.ps1`→`scripts/asr-benchmark.ps1`. Turkish TTS test sentences and pronunciation examples kept verbatim. Token-level verification: only comments/strings changed, no code logic; **59 tests green**. | all |

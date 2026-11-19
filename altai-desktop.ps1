@@ -51,6 +51,7 @@ $state = [hashtable]::Synchronized(@{
     You     = ''
     Reply   = ''
     Latency = ''
+    Ttfa    = ''
     Error   = ''
     Vram    = ''
 })
@@ -170,6 +171,13 @@ $turnBlock = {
         & pwsh @argv *> $log
 
         $lines = Get-Content -LiteralPath $log -Encoding UTF8
+        if (($lines -join "`n") -match 'No speech detected') {
+            $state.You = ''
+            $state.Reply = ''
+            $state.Latency = ''
+            $state.Msg = 'No speech detected (silence or noise). Nothing was sent to the model.'
+            return
+        }
         $textLine = @($lines | Where-Object { $_ -match '^\[TEXT\]' })[0]
         $replyLine = @($lines | Where-Object { $_ -match '^\[LLM\]' -and $_ -notmatch 'first chunk' })[0]
         $latLine = @($lines | Where-Object { $_ -match 'FIRST AUDIO' })[0]
@@ -180,10 +188,15 @@ $turnBlock = {
             $state.Reply = "(no answer) $err"
         }
         $state.Latency = if ($latLine) { ($latLine -replace '^\[STREAM\]\s*', '').Trim() } else { '' }
+        $state.Ttfa = if ($latLine -match 'FIRST AUDIO\s+([0-9.]+)\s*s') { $Matches[1] + ' s' } else { '' }
         $state.Msg = 'Ready. Click "Click to speak".'
     } catch {
         $state.Error = $_.Exception.Message
-        $state.Msg = 'Turn failed: ' + $_.Exception.Message
+        if ($_.Exception.Message -match 'No speech detected') {
+            $state.Msg = 'No speech detected (silence or noise). Nothing was sent to the model.'
+        } else {
+            $state.Msg = 'Turn failed: ' + $_.Exception.Message
+        }
     } finally {
         $state.Busy = $false
     }
@@ -286,7 +299,7 @@ $form.ForeColor = [System.Drawing.Color]::FromArgb(232, 234, 240)
 
 $top = New-Object System.Windows.Forms.Panel
 $top.Dock = 'Top'
-$top.Height = 74
+$top.Height = 112
 $top.Padding = New-Object System.Windows.Forms.Padding(12, 10, 12, 6)
 $form.Controls.Add($top)
 
@@ -325,6 +338,37 @@ $stopBtn.BackColor = [System.Drawing.Color]::FromArgb(70, 74, 88)
 $stopBtn.ForeColor = [System.Drawing.Color]::White
 $top.Controls.Add($stopBtn)
 
+$micLabel = New-Object System.Windows.Forms.Label
+$micLabel.Text = 'Mic:'
+$micLabel.AutoSize = $true
+$micLabel.Location = New-Object System.Drawing.Point(12, 76)
+$micLabel.ForeColor = [System.Drawing.Color]::FromArgb(170, 176, 190)
+$top.Controls.Add($micLabel)
+
+$micCombo = New-Object System.Windows.Forms.ComboBox
+$micCombo.DropDownStyle = 'DropDownList'
+$micCombo.Location = New-Object System.Drawing.Point(50, 72)
+$micCombo.Size = New-Object System.Drawing.Size(340, 24)
+$top.Controls.Add($micCombo)
+
+$autoBox = New-Object System.Windows.Forms.CheckBox
+$autoBox.Text = 'Load on start'
+$autoBox.Checked = $true
+$autoBox.AutoSize = $true
+$autoBox.Location = New-Object System.Drawing.Point(405, 74)
+$autoBox.ForeColor = [System.Drawing.Color]::FromArgb(170, 176, 190)
+$top.Controls.Add($autoBox)
+
+$clearBtn = New-Object System.Windows.Forms.Button
+$clearBtn.Text = 'Clear chat'
+$clearBtn.Size = New-Object System.Drawing.Size(90, 26)
+$clearBtn.Location = New-Object System.Drawing.Point(668, 72)
+$clearBtn.Anchor = 'Top,Right'
+$clearBtn.FlatStyle = 'Flat'
+$clearBtn.BackColor = [System.Drawing.Color]::FromArgb(50, 54, 66)
+$clearBtn.ForeColor = [System.Drawing.Color]::White
+$top.Controls.Add($clearBtn)
+
 $log = New-Object System.Windows.Forms.RichTextBox
 $log.Dock = 'Fill'
 $log.ReadOnly = $true
@@ -333,7 +377,7 @@ $log.ForeColor = [System.Drawing.Color]::FromArgb(225, 228, 236)
 $log.BorderStyle = 'None'
 $log.Font = New-Object System.Drawing.Font('Consolas', 10)
 $log.HideSelection = $false
-$log.Text = "Altai`r`n`r`n1) Click 'Load models' (llama.cpp on the GPU, whisper on the CPU, Chatterbox TTS).`r`n2) Click 'Click to speak', say something, click again.`r`n`r`n"
+$log.Text = "Altai`r`n`r`n1) Click 'Load models' (llama.cpp + faster-whisper + Chatterbox on the GPU).`r`n2) Click 'Click to speak' (or press Ctrl+Space), say something, then click again.`r`n`r`n"
 $form.Controls.Add($log)
 
 $bottom = New-Object System.Windows.Forms.Panel
@@ -416,15 +460,50 @@ $talkBtn.Add_Click({
     Invoke-AltaiTurn $wavPath $thinkBox.Checked | Out-Null
 })
 
+# microphone picker (saved under %LOCALAPPDATA%\altai\mic.txt)
+try {
+    Get-AltaiAudioDevices | ForEach-Object { [void]$micCombo.Items.Add($_) }
+    $saved = Get-AltaiDefaultDevice
+    if ($saved -and $micCombo.Items.Contains($saved)) { $micCombo.SelectedItem = $saved }
+    elseif ($micCombo.Items.Count -gt 0) { $micCombo.SelectedIndex = 0 }
+} catch { }
+$micCombo.Add_SelectedIndexChanged({
+    if ($micCombo.SelectedItem) { Set-AltaiDefaultDevice ([string]$micCombo.SelectedItem) }
+})
+
+$clearBtn.Add_Click({
+    $log.Clear()
+    $log.AppendText("Chat cleared.`r`n`r`n")
+})
+
+# Ctrl+Space toggles recording while the window is focused
+$form.KeyPreview = $true
+$form.Add_KeyDown({
+    param($s, $e)
+    if ($e.Control -and $e.KeyCode -eq [System.Windows.Forms.Keys]::Space) {
+        $e.SuppressKeyPress = $true
+        if ($talkBtn.Enabled) { $talkBtn.PerformClick() }
+    }
+})
+
+# optional: load everything as soon as the window appears
+$form.Add_Shown({
+    if ($autoBox.Checked -and -not $state.Ready -and -not $state.Busy) {
+        $log.AppendText("Loading models...`r`n")
+        Start-AltaiServices | Out-Null
+    }
+})
+
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 350
 $script:ticks = 0
 $timer.Add_Tick({
     $script:ticks++
-    $statusLabel.Text = ('LLM: {0}   ASR: {1}   TTS: {2}   {3}' -f `
+    $statusLabel.Text = ('LLM: {0}   ASR: {1}   TTS: {2}   {3}   {4}' -f `
         $(if ($state.Llm) { 'up' } else { '-' }), `
         $(if ($state.Asr) { 'up' } else { '-' }), `
-        $(if ($state.Tts) { 'up' } else { '-' }), $state.Vram)
+        $(if ($state.Tts) { 'up' } else { '-' }), $state.Vram, `
+        $(if ($state.Ttfa) { 'TTFA ' + $state.Ttfa } else { '' }))
     if ($script:ticks % 6 -eq 0) { $state.Vram = Get-AltaiVram }
     $msgLabel.Text = if ($state.Recording) { "Recording... $((Get-AltaiRecordingSeconds)) s" } else { $state.Msg }
 

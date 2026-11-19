@@ -31,6 +31,28 @@ def test_audio_seconds_reads_length(tmp_path):
     assert asr.audio_seconds(p) == pytest.approx(2.0, abs=1e-6)
 
 
+def test_wav_energy_detects_silence_and_speech(tmp_path):
+    silent = tmp_path / "silent.wav"
+    with wave.open(str(silent), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(b"\x00\x00" * 16000)
+    duration, rms = asr.wav_energy(str(silent))
+    assert duration == pytest.approx(1.0, abs=1e-6)
+    assert rms < 0.001
+
+    loud = tmp_path / "loud.wav"
+    with wave.open(str(loud), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(struct.pack("<16000h", *([8000, -8000] * 8000)))
+    duration2, rms2 = asr.wav_energy(str(loud))
+    assert duration2 == pytest.approx(1.0, abs=1e-6)
+    assert rms2 > 0.1
+
+
 def test_compute_rtf():
     assert asr.compute_rtf(0.5, 2.0) == pytest.approx(0.25)
     assert asr.compute_rtf(1.0, 0) == float("inf")
@@ -132,7 +154,7 @@ def test_server_mode_posts_multipart_and_needs_no_model(tmp_path, monkeypatch, c
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
 
     wav = make_wav(tmp_path / "srv.wav", seconds=1.0)
-    code = asr.main(["--wav", wav, "--server-url", "http://127.0.0.1:8081"])
+    code = asr.main(["--wav", wav, "--server-url", "http://127.0.0.1:8081", "--allow-silence"])
     out = json.loads(capsys.readouterr().out)
 
     assert code == 0
@@ -146,7 +168,7 @@ def test_server_mode_posts_multipart_and_needs_no_model(tmp_path, monkeypatch, c
 
 def test_server_mode_dead_endpoint_reports_error(tmp_path, capsys):
     wav = make_wav(tmp_path / "dead.wav", seconds=0.5)
-    code = asr.main(["--wav", wav, "--server-url", "http://127.0.0.1:1"])
+    code = asr.main(["--wav", wav, "--server-url", "http://127.0.0.1:1", "--allow-silence"])
     out = json.loads(capsys.readouterr().out)
     assert code == 5
     assert out["ok"] is False

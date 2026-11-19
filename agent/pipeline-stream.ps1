@@ -71,7 +71,14 @@ if (-not $Text) {
     $ErrorActionPreference = $oldEap
     if ($code -ne 0 -or -not (Test-Path $asrJson)) { throw "ASR failed (exit $code); error: $asrErr" }
     $asrOut = Get-Content -Raw -Encoding UTF8 $asrJson | ConvertFrom-Json
-    if (-not $asrOut.ok) { throw "ASR failed: $($asrOut.error)" }
+    if (-not $asrOut.ok) {
+        $msg = [string]$asrOut.error
+        if (-not $msg) { $msg = [string](@($asrOut.errors | ForEach-Object { $_.error })[0]) }
+        if ($msg -match 'no speech') {
+            throw "No speech detected in the recording (silence or noise). Nothing was sent to the model."
+        }
+        throw "ASR failed: $msg"
+    }
     $r0 = $asrOut.results[0]
     Write-Host ("[ASR] {0} s audio -> {1} s (RTF {2}, threads {3})" -f `
         $r0.audio_seconds, $r0.asr_seconds, $r0.rtf, $asrOut.threads)

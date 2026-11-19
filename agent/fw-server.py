@@ -78,13 +78,14 @@ class State:
     model_name = ""
     device = ""
     compute = ""
+    vad = True
     lock = threading.Lock()
 
 
 def transcribe(audio, language):
     with State.lock:
         segments, _info = State.model.transcribe(
-            audio, language=language or "tr", beam_size=5, vad_filter=False)
+            audio, language=language or "tr", beam_size=5, vad_filter=State.vad)
         return "".join(s.text for s in segments).strip()
 
 
@@ -103,7 +104,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/health":
             self._json(200, {"ok": State.model is not None, "model": State.model_name,
-                             "device": State.device, "compute": State.compute})
+                             "device": State.device, "compute": State.compute, "vad": State.vad})
         else:
             self._json(404, {"ok": False, "error": "not found"})
 
@@ -146,6 +147,8 @@ def main() -> int:
                     help="float16 / int8_float16 / int8 / float32")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8083)
+    ap.add_argument("--no-vad", action="store_true",
+                    help="disable Silero VAD filtering (default: on, drops non-speech before decoding)")
     args = ap.parse_args()
 
     _add_cuda_dlls()
@@ -157,6 +160,7 @@ def main() -> int:
     State.model_name = args.model
     State.device = args.device
     State.compute = args.compute
+    State.vad = not args.no_vad
     print(f"model loaded in {time.perf_counter() - t0:.1f} s", flush=True)
 
     # Warm-up: the first transcribe pays kernel/algorithm selection (measured up to ~28 s).
