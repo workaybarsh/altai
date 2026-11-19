@@ -33,6 +33,7 @@ param(
   [string]$Python = "python",
   [string]$OutDir = "logs\pipeline-stream",
   [int]$MaxTokens = 1024,
+[int]$FirstChars = 0,
   [switch]$NoThink,
   [switch]$Play
 )
@@ -86,6 +87,7 @@ $streamArgs = @($stream, "--text", $Text, "--server", $Server, "--tts-server", $
                 "--lang", $Lang, "--out-dir", $outRoot, "--prefix", $prefix,
                 "--max-tokens", $MaxTokens, "--json-out", $jsonFile)
 if ($NoThink) { $streamArgs += "--no-think" }
+if ($FirstChars -gt 0) { $streamArgs += @("--first-chars", $FirstChars) }
 if ($Play) { $streamArgs += "--play" }
 
 $oldEap = $ErrorActionPreference

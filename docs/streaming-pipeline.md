@@ -119,6 +119,12 @@ LLM streams on the same card):
 End to end on the GPU stack (faster-whisper + 9B + Chatterbox): ASR 0.3–0.5 s, LLM TTFT ~0.3 s,
 first sentence ~0.3 s → **first audio ~5 s**, total VRAM ~11.6 GB.
 
+**First-chunk splitting (`--first-chars`).** Cutting the first chunk at a comma starts audio earlier
+in theory, but the measured TTS cost is dominated by a fixed ~1.6–1.8 s per call plus ~0.9 s per
+second of audio (8 chars → 2.6 s, 30 chars → 3.45 s, 67 chars → 5.8 s). A split saves ~0.8 s of
+first-audio latency and adds a second call, while run-to-run variance (2.6–9 s) hides the gain.
+The option stays available but is **off by default**.
+
 ## 6. Known limits / next steps
 
 - One TTS request per sentence → as many requests as sentences; in a long response total TTS time may

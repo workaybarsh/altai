@@ -45,6 +45,22 @@ def test_sentence_buffer_soft_split_on_comma():
     assert out and out[0].endswith(",")     # split started early at the comma
 
 
+def test_sentence_buffer_first_chars_splits_early():
+    sb = ls.SentenceBuffer(first_chars=8)
+    out = sb.feed("Merhaba, bugun")
+    assert out == ["Merhaba,"]              # first chunk cut at the comma, before the sentence ends
+    rest = sb.flush()
+    assert rest and rest[0] == "bugun"
+
+
+def test_sentence_buffer_first_chars_does_not_split_again():
+    sb = ls.SentenceBuffer(first_chars=10)
+    out = sb.feed("Bir iki uc, dort bes alti.")
+    assert out and out[0] == "Bir iki uc,"   # early cut happens only once
+    assert out[1] == "dort bes alti."        # the rest follows normal sentence rules
+    assert sb.flush() == []
+
+
 def test_is_speakable():
     assert ls.is_speakable("Merhaba")
     assert ls.is_speakable("3 elma")

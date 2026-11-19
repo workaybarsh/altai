@@ -87,11 +87,13 @@ class SentenceBuffer:
     - A piece shorter than `min_chars` is not sent on its own (it merges with the next one).
     """
 
-    def __init__(self, min_chars=2, force_chars=180, soft_chars=120):
+    def __init__(self, min_chars=2, force_chars=180, soft_chars=120, first_chars=0):
         self.buf = ""
         self.min_chars = min_chars
         self.force_chars = force_chars
         self.soft_chars = soft_chars
+        self.first_chars = first_chars
+        self._first_done = False
 
     def feed(self, text):
         """Appends the incoming chunk; returns COMPLETED sentences (0+)."""
@@ -121,6 +123,26 @@ class SentenceBuffer:
                 self.buf = ""
             return None
 
+        # First chunk: emit early at a comma/space so audio starts sooner (chunked streaming).
+        if (not self._first_done and self.first_chars and not final
+                and len(buf) >= self.first_chars):
+            window = buf[: self.first_chars + 20]
+            cut = None
+            for mm in _SOFT.finditer(window):
+                if mm.end() >= self.min_chars:
+                    cut = mm.end()
+                    break
+            if cut is None:
+                sp = window.rfind(" ")
+                if sp >= self.min_chars:
+                    cut = sp + 1
+            if cut is not None:
+                piece = buf[:cut].strip()
+                if len(piece) >= self.min_chars:
+                    self.buf = buf[cut:]
+                    self._first_done = True
+                    return piece
+
         cut = None
         m = _BOUNDARY.search(buf)
         if m:
@@ -144,6 +166,7 @@ class SentenceBuffer:
 
         piece = buf[:cut].strip()
         self.buf = buf[cut:]
+        self._first_done = True
         if len(piece) < self.min_chars:
             # very short piece: merge it with the next incoming text
             self.buf = piece + " " + self.buf if piece else self.buf
@@ -310,7 +333,7 @@ class Player:
 
 def run(text, server, tts_server, out_dir, prefix="s_", lang=None, think=True,
         max_tokens=1024, system=None, play=False, force_chars=180,
-        soft_chars=120, timeout=300, log=None):
+        soft_chars=120, first_chars=0, timeout=300, log=None):
     """Streaming turn: LLM stream -> sentences -> TTS -> (optional) playback. Returns a summary."""
     log = log or (lambda *a: None)
     system = system or (SYSTEM_EN if (lang or "").lower().startswith("en") else SYSTEM_TR)
@@ -318,7 +341,7 @@ def run(text, server, tts_server, out_dir, prefix="s_", lang=None, think=True,
     t0 = time.perf_counter()
     _event("turn_start")
     messages = [{"role": "system", "content": system}, {"role": "user", "content": text}]
-    sb = SentenceBuffer(force_chars=force_chars, soft_chars=soft_chars)
+    sb = SentenceBuffer(force_chars=force_chars, soft_chars=soft_chars, first_chars=first_chars)
     player = Player(enabled=play)
 
     sentences = []
@@ -446,6 +469,8 @@ def main(argv=None):
     ap.add_argument("--prefix", default="s_")
     ap.add_argument("--force-chars", type=int, default=180)
     ap.add_argument("--soft-chars", type=int, default=120)
+    ap.add_argument("--first-chars", type=int, default=0,
+                    help="cut the FIRST chunk early at a comma/space (chunked streaming; 0 = off)")
     ap.add_argument("--timeout", type=int, default=300)
     ap.add_argument("--play", action="store_true")
     ap.add_argument("--json-out")
@@ -463,7 +488,8 @@ def main(argv=None):
         summary = run(text, args.server, args.tts_server, args.out_dir, prefix=args.prefix,
                       lang=args.lang, think=not args.no_think, max_tokens=args.max_tokens,
                       system=args.system, play=args.play, force_chars=args.force_chars,
-                      soft_chars=args.soft_chars, timeout=args.timeout,
+                      soft_chars=args.soft_chars, first_chars=args.first_chars,
+                      timeout=args.timeout,
                       log=lambda s: print(s, file=sys.stderr))
     except urllib.error.URLError as exc:
         _json({"ok": False, "error": f"server unreachable: {exc}"}, args.json_out)

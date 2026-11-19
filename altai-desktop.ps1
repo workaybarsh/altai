@@ -26,6 +26,7 @@ param(
     [string]$LlmServerUrl = 'http://127.0.0.1:8080',
     [switch]$NoThink,
     [int]$MaxTokens = 200,
+    [int]$FirstChars = 0,
     [switch]$KeepServices,
     [switch]$SelfTest,
     [string]$Wav
@@ -146,7 +147,7 @@ $loadBlock = {
 }
 
 $turnBlock = {
-    param($root, $wav, $state, $lang, $noThink, $fwUrl, $ttsUrl, $maxTokens)
+    param($root, $wav, $state, $lang, $noThink, $fwUrl, $ttsUrl, $maxTokens, $firstChars)
 
     try {
         $state.Busy = $true
@@ -162,7 +163,7 @@ $turnBlock = {
         $script = Join-Path $root 'agent\pipeline-stream.ps1'
         $argv = @('-NoProfile', '-File', $script, '-Wav', $wav,
             '-FwServerUrl', $fwUrl, '-TtsServerUrl', $ttsUrl,
-            '-Lang', $lang, '-OutDir', $relOut, '-MaxTokens', $maxTokens, '-Play')
+            '-Lang', $lang, '-OutDir', $relOut, '-MaxTokens', $maxTokens, '-FirstChars', $firstChars, '-Play')
         if ($noThink) { $argv += '-NoThink' }
 
         $log = Join-Path $outDir 'turn.log'
@@ -197,9 +198,9 @@ function Start-AltaiServices {
 }
 
 function Invoke-AltaiTurn([string]$wavPath, [bool]$think = $true) {
-    $job = Start-ThreadJob -ArgumentList $turnBlock, $root, $wavPath, $state, $Lang, (-not $think), $FwServerUrl, $TtsServerUrl, $MaxTokens -ScriptBlock {
-        param($blk, $r, $w, $s, $l, $nt, $a, $t, $mt)
-        & $blk $r $w $s $l $nt $a $t $mt
+    $job = Start-ThreadJob -ArgumentList $turnBlock, $root, $wavPath, $state, $Lang, (-not $think), $FwServerUrl, $TtsServerUrl, $MaxTokens, $FirstChars -ScriptBlock {
+        param($blk, $r, $w, $s, $l, $nt, $a, $t, $mt, $fc)
+        & $blk $r $w $s $l $nt $a $t $mt $fc
     }
     return $job
 }
@@ -260,7 +261,7 @@ if ($SelfTest) {
     & $loadBlock $root $state $Backend $Python $Lang
     if (-not $state.Ready) { throw "Services not ready: $($state.Error)" }
     Write-Host '[selftest] running one turn...'
-    & $turnBlock $root (Resolve-Path -LiteralPath $Wav).Path $state $Lang $NoThink.IsPresent $FwServerUrl $TtsServerUrl $MaxTokens
+    & $turnBlock $root (Resolve-Path -LiteralPath $Wav).Path $state $Lang $NoThink.IsPresent $FwServerUrl $TtsServerUrl $MaxTokens $FirstChars
     Write-Host "TRANSCRIPT: $($state.You)"
     Write-Host "REPLY: $($state.Reply)"
     Write-Host "LATENCY: $($state.Latency)"

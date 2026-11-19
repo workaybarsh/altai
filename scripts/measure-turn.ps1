@@ -21,6 +21,7 @@ param(
     [string]$FwServerUrl = 'http://127.0.0.1:8083',
     [string]$TtsServerUrl = 'http://127.0.0.1:8082',
     [int]$MaxTokens = 0,
+[int]$FirstChars = 0,
     [string]$OutDir = 'logs\measure'
 )
 
@@ -55,6 +56,7 @@ for ($i = 1; $i -le $Turns; $i++) {
     if ($AsrServerUrl) { $argv += @('-AsrServerUrl', $AsrServerUrl) }
     $argv += @('-TtsServerUrl', $TtsServerUrl)
     if ($MaxTokens -gt 0) { $argv += @('-MaxTokens', $MaxTokens) }
+if ($FirstChars -gt 0) { $argv += @('-FirstChars', $FirstChars) }
     if ($NoThink) { $argv += '-NoThink' }
 
     $eventsFile = Join-Path $runDir ("events{0}.jsonl" -f $i)
