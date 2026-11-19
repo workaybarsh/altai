@@ -105,7 +105,8 @@ after the user stops speaking.
 | ✅ | `agent/mtp_inject.py` | Adds the MTP/`nextn` head to a quant GGUF (from the base `huihui-ai` repository) |
 | ✅ | `agent/mtp-status.py` | Writes a GGUF's MTP status as JSON |
 | ✅ | `scripts/mtp-verify.ps1` | Checks the MTP status; adds the head with `-Inject` |
-| ✅ | `agent/asr-tools.py` | 16 kHz mono conversion + **whisper.cpp** inference (single-shot **or** resident `whisper-server` via `--server-url`) + latency/RTF measurement |
+| ✅ | `agent/asr-tools.py` | 16 kHz mono conversion + **whisper.cpp** inference (single-shot **or** resident `whisper-server`, or the GPU `fw-server`) + speech gate + latency/RTF measurement |
+| `agent/asr-ab.py` + `scripts/asr-ab.ps1` | A/B two faster-whisper models on one WAV (text, load time, RTF) |
 | ✅ | `scripts/asr-benchmark.ps1` | Phase 2 ASR measurement harness (wrapper) |
 | ✅ | `scripts/whisper-server.ps1` | Start/stop the resident `whisper-server` (`-ng`, port 8081); the model stays in memory |
 | ✅ | `scripts/tts-server.ps1` | Resident TTS server (`tts-tools.py --serve`, port 8082); Chatterbox stays in memory |
