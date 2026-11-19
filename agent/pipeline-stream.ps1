@@ -25,6 +25,7 @@ param(
   [string]$Model,
   [string]$Whisper,
   [string]$AsrServerUrl,
+  [string]$FwServerUrl,
   [int]$AsrThreads = 0,
 [string]$Ffmpeg,
   [string]$Lang = "tr",
@@ -51,12 +52,14 @@ if (-not $TtsServerUrl) {
 if ($TextFile) { $Text = [System.IO.File]::ReadAllText($TextFile).Trim() }
 if (-not $Text) {
     if (-not $Wav) { throw "Neither -Text nor -Wav was provided." }
-    if (-not $Model -and -not $AsrServerUrl) { throw "ASR needs -Model (whisper .bin) or -AsrServerUrl." }
+    if (-not $Model -and -not $AsrServerUrl -and -not $FwServerUrl) { throw "ASR needs -Model (whisper .bin) or -AsrServerUrl or -FwServerUrl." }
     # Read the JSON from a FILE (UTF-8) - piping stdout corrupts the encoding in PS 5.1 (pitfall #14).
     $asrJson = Join-Path $outRoot "asr.json"
     $asrErr = Join-Path $outRoot "asr.err.txt"
     $asrArgs = @($asr, "--wav", $Wav, "--lang", $Lang, "--out", $asrJson)
-    if ($AsrServerUrl) { $asrArgs += @("--server-url", $AsrServerUrl) } else { $asrArgs += @("--model", $Model) }
+    if ($FwServerUrl) { $asrArgs += @("--fw-server", $FwServerUrl) }
+    elseif ($AsrServerUrl) { $asrArgs += @("--server-url", $AsrServerUrl) }
+    else { $asrArgs += @("--model", $Model) }
     if ($Whisper) { $asrArgs += @("--whisper", $Whisper) }
     if ($Ffmpeg) { $asrArgs += @("--ffmpeg", $Ffmpeg) }
     if ($AsrThreads -gt 0) { $asrArgs += @("--threads", $AsrThreads) }

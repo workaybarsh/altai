@@ -26,6 +26,7 @@ param(
     [int]$Seed = -1,
     [switch]$NoSoftg,
     [switch]$TrRaw,
+[switch]$Tf32,
     [string]$LogDir = 'logs',
     [int]$TimeoutSec = 180,
     [switch]$Stop
@@ -54,6 +55,15 @@ if ($Stop) {
 }
 
 if (-not (Test-Path -LiteralPath $tool)) { throw "tts-tools.py not found: $tool" }
+
+# Refuse to start a second server: a duplicate model doubles VRAM. Check the process list too,
+# because while a model is loading the HTTP port is not bound yet.
+$existing = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -like '*tts-tools.py*--serve*' }
+if ($existing) {
+    Write-Host "tts-server already running (pid $($existing[0].ProcessId)); not starting another."
+    exit 0
+}
 if (-not $Python) {
     if ($Backend -eq 'piper') { $Python = 'python' }   # piper is stdlib-only (no torch/venv needed)
     else { $Python = Join-Path $env:USERPROFILE 'tts-venv\Scripts\python.exe' }
@@ -74,6 +84,7 @@ if ($VoicePrompt) { $args += @('--voice-prompt', $VoicePrompt) }
 if ($Seed -ge 0) { $args += @('--seed', "$Seed") }
 if ($NoSoftg) { $args += @('--chatterbox-no-softg') }
 if ($TrRaw) { $args += @('--chatterbox-tr-raw') }
+if ($Tf32) { $args += @('--tf32') }
 
 # piper: IMPORTANT - the binary and the voice file must be on an ASCII path (espeak-ng/onnxruntime
 # crash on a non-ASCII path). Default: %LOCALAPPDATA%\altai\piper (ASCII).

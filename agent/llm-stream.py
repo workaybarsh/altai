@@ -139,6 +139,20 @@ def is_speakable(text):
     return any(ch.isalnum() for ch in (text or ""))
 
 
+def _event(name, **kw):
+    """Appends a wall-clock event (JSON line) when ALTAI_EVENTS is set (used by measure-turn)."""
+    path = os.environ.get("ALTAI_EVENTS")
+    if not path:
+        return
+    rec = {"event": name, "ts": time.time()}
+    rec.update(kw)
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 _MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 _MD_MARKS = re.compile(r"[*_`~]")
 _MD_PREFIX = re.compile(r"^\s{0,3}(?:#{1,6}\s+|>\s?|[-+]\s+)")
@@ -279,6 +293,7 @@ def run(text, server, tts_server, out_dir, prefix="s_", lang=None, think=True,
     log = log or (lambda *a: None)
     os.makedirs(out_dir, exist_ok=True)
     t0 = time.perf_counter()
+    _event("turn_start")
     messages = [{"role": "system", "content": system}, {"role": "user", "content": text}]
     sb = SentenceBuffer(force_chars=force_chars, soft_chars=soft_chars)
     player = Player(enabled=play)
@@ -329,6 +344,7 @@ def run(text, server, tts_server, out_dir, prefix="s_", lang=None, think=True,
         log(f"  [{idx}] +{ready - t0:5.1f}s  TTS {ready - t_tts:4.1f}s  "
             f"{res.get('audio_seconds')}s audio  {sentence!r}")
         player.play(res.get("out"))
+        _event("speak", index=idx, audio=res.get("audio_seconds"))
 
     try:
         try:
@@ -361,6 +377,7 @@ def run(text, server, tts_server, out_dir, prefix="s_", lang=None, think=True,
 
     answer = "".join(answer_parts).strip()
     done = time.perf_counter()
+    _event("turn_end")
     summary = {
         "ok": bool(sentences),
         "answer": answer,

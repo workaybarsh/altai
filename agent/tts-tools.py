@@ -434,11 +434,25 @@ def server_texts(req: dict):
     return out
 
 
+def _apply_tf32(enabled):
+    """TF32 matmul: on Blackwell/Ampere it is a free speed-up for fp32 models like Chatterbox."""
+    if not enabled:
+        return
+    try:
+        import torch
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        torch.set_float32_matmul_precision("high")
+    except Exception:
+        pass
+
+
 def create_server(args):
     """Creates the HTTP server (`serve_forever` is NOT called; keeps it testable)."""
     import http.server
 
     state = {"model": None, "load_seconds": None, "fatal": None}
+    _apply_tf32(getattr(args, "tf32", False))
 
     def ensure_model():
         if state["model"] is None:
@@ -568,6 +582,22 @@ def serve(args) -> int:
     try:
         srv = create_server(args)
         srv.ensure_model()   # load the model now (so the first request is not slow)
+        if getattr(args, "backend", "") == "chatterbox":
+            # Warm-up: the first generation pays CUDA graph/kernel setup (~5-12 s). Doing one
+            # throwaway sentence here keeps the first real turn fast.
+            try:
+                import tempfile
+                t_warm = time.perf_counter()
+                wav = os.path.join(tempfile.gettempdir(), "altai-tts-warmup.wav")
+                synth_chatterbox(
+                    "Merhaba.", wav, lang=args.lang, device=args.device,
+                    exaggeration=args.exaggeration, cfg=args.cfg, t3_model=args.t3_model,
+                    seed=args.seed, tr_fix=not args.chatterbox_tr_raw,
+                    respell=not args.chatterbox_tr_raw, softg=not args.chatterbox_no_softg,
+                    guard=False)
+                print(f"warmup {time.perf_counter() - t_warm:.1f} s", flush=True)
+            except Exception as exc:  # noqa: BLE001 - a failed warm-up must not block the server
+                print(f"warmup skipped: {type(exc).__name__}: {exc}", flush=True)
     except Exception as exc:
         _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, args.json_out)
         return 3
@@ -590,6 +620,8 @@ def main(argv=None) -> int:
     ap.add_argument("--lang", default=None, help="chatterbox multilingual: tr, en, ...")
     ap.add_argument("--voice-prompt", default=None, help="reference wav for cloning")
     ap.add_argument("--device", default="cuda", help="cuda | cpu")
+    ap.add_argument("--tf32", action="store_true",
+                    help="enable TF32 matmul (Ampere+): faster, negligible precision loss")
     ap.add_argument("--exaggeration", type=float, default=0.5)
     ap.add_argument("--cfg", type=float, default=0.5)
     ap.add_argument("--t3-model", default="v3", help="chatterbox multilingual checkpoint: v3 | v2")
@@ -618,6 +650,7 @@ def main(argv=None) -> int:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8082)
     args = ap.parse_args(argv)
+    _apply_tf32(getattr(args, "tf32", False))
 
     if args.serve:
         return serve(args)

@@ -145,10 +145,9 @@ def find_ffmpeg(explicit: str | None = None):
         return found
     return LOCAL_FFMPEG if os.path.exists(LOCAL_FFMPEG) else None
 
-
 # ---------------------------------------------------------------- audio path
 
-def to_wav_16k_mono(src: str, dst: str, ffmpeg: str = "ffmpeg"):
+def to_wav_16k_mono(src: str, dst: str, ffmpeg: str | None = None):
     """Converts to 16 kHz mono PCM WAV with ffmpeg. Returns (path, error)."""
     exe = find_ffmpeg(ffmpeg)
     if not exe:
@@ -162,7 +161,7 @@ def to_wav_16k_mono(src: str, dst: str, ffmpeg: str = "ffmpeg"):
     return dst, None
 
 
-def prepare_wav(src: str, workdir: str, ffmpeg: str = "ffmpeg"):
+def prepare_wav(src: str, workdir: str, ffmpeg: str | None = None):
     """Leaves the file untouched if it is already 16 kHz mono; otherwise converts it.
 
     Returns (path, error).
@@ -258,16 +257,47 @@ def transcribe_server(server_url, wav, language="tr", timeout=600):
     }
 
 
-def transcribe(whisper_exe, model, wav, language="tr", threads=None, extra=None, server_url=None):
-    """Inference router: whisper-server if a server URL is given, otherwise single-shot whisper-cli."""
+def transcribe_fw_server(url, wav, language="tr", timeout=600):
+    """faster-whisper server (agent/fw-server.py): POST the WAV bytes to /transcribe."""
+    import urllib.parse
+    import urllib.request
+
+    with open(wav, "rb") as f:
+        audio_bytes = f.read()
+    target = url.rstrip("/") + "/transcribe?lang=" + urllib.parse.quote(language or "tr")
+    req = urllib.request.Request(target, data=audio_bytes, method="POST",
+                                 headers={"Content-Type": "audio/wav"})
+    t0 = time.perf_counter()
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+    dt = time.perf_counter() - t0
+    if not payload.get("ok"):
+        raise RuntimeError(f"fw-server error: {payload.get('error')}")
+    audio = payload.get("audio_seconds") or audio_seconds(wav)
+    return {
+        "text": (payload.get("text") or "").strip(),
+        "audio_seconds": round(audio, 3),
+        "asr_seconds": round(dt, 4),
+        "infer_seconds": round(payload.get("infer_seconds", dt), 4),
+        "rtf": round(compute_rtf(dt, audio), 4),
+        "infer_rtf": round(compute_rtf(payload.get("infer_seconds", dt), audio), 4),
+        "server": url,
+    }
+
+
+def transcribe(whisper_exe, model, wav, language="tr", threads=None, extra=None, server_url=None,
+               fw_server=None):
+    """Inference router: fw-server, then whisper-server, then single-shot whisper-cli."""
+    if fw_server:
+        return transcribe_fw_server(fw_server, wav, language)
     if server_url:
         return transcribe_server(server_url, wav, language)
     return transcribe_once(whisper_exe, model, wav, language, threads, extra)
 
 
 def benchmark_file(whisper_exe, model, wav, language="tr", threads=None, repeat=1, extra=None,
-                   server_url=None):
-    runs = [transcribe(whisper_exe, model, wav, language, threads, extra, server_url)
+                   server_url=None, fw_server=None):
+    runs = [transcribe(whisper_exe, model, wav, language, threads, extra, server_url, fw_server)
             for _ in range(max(1, repeat))]
     asr = [r["asr_seconds"] for r in runs]
     infer = [r["infer_seconds"] for r in runs if "infer_seconds" in r]
@@ -282,7 +312,7 @@ def benchmark_file(whisper_exe, model, wav, language="tr", threads=None, repeat=
         "rtf": runs[-1]["rtf"],
         "model_load_seconds": runs[-1].get("load_seconds"),
     }
-    if server_url:
+    if server_url or fw_server:
         out["server"] = runs[-1].get("server")
     if infer:
         out["median_infer"] = round(percentile(infer, 0.5), 4)
@@ -321,7 +351,9 @@ def main(argv=None) -> int:
     ap.add_argument("--whisper", default=None, help="path to whisper-cli (default: PATH)")
     ap.add_argument("--server-url", default=None,
                     help="whisper-server base URL (e.g. http://127.0.0.1:8081); if given, the model stays in memory")
-    ap.add_argument("--ffmpeg", default="ffmpeg")
+    ap.add_argument("--fw-server", default=None,
+                    help="faster-whisper server base URL (e.g. http://127.0.0.1:8083); GPU STT, model stays in memory")
+    ap.add_argument("--ffmpeg", default=None, help="ffmpeg.exe path (default: PATH, then tools\\ffmpeg)")
     ap.add_argument("--lang", default="tr")
     ap.add_argument("--threads", type=int, default=None,
                     help="whisper.cpp -t value (default: logical core count)")
@@ -330,7 +362,9 @@ def main(argv=None) -> int:
     ap.add_argument("--tmp", default=DEFAULT_TMP, help="temporary folder for conversion")
     args = ap.parse_args(argv)
 
-    if args.server_url:
+    if args.fw_server:
+        whisper = args.fw_server          # GPU STT server: no binary, no model file needed
+    elif args.server_url:
         whisper = args.server_url          # server mode: no binary needed
     else:
         whisper = find_whisper(args.whisper)
@@ -359,7 +393,8 @@ def main(argv=None) -> int:
             continue
         try:
             results.append(benchmark_file(whisper, args.model, wav, args.lang,
-                                          threads, args.repeat, server_url=args.server_url))
+                                          threads, args.repeat, server_url=args.server_url,
+                                          fw_server=args.fw_server))
         except Exception as exc:  # an inference error does not abort the run
             errors.append({"file": f, "error": str(exc)})
 
@@ -373,6 +408,7 @@ def main(argv=None) -> int:
         "threads": threads,
         "repeat": args.repeat,
         "server_url": args.server_url,
+        "fw_server": args.fw_server,
         "results": results,
         "errors": errors,
         "stats": {

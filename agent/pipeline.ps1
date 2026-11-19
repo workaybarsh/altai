@@ -27,6 +27,7 @@ param(
   [string]$Model,
   [string]$Whisper,
   [string]$AsrServerUrl,
+  [string]$FwServerUrl,
   [int]$AsrThreads = 0,
   [string]$Ffmpeg,
   [string]$Lang = "tr",
@@ -61,13 +62,14 @@ if ($Backend -eq "piper") {
 if ($TextFile) { $Text = [System.IO.File]::ReadAllText($TextFile).Trim() }
 if (-not $Text) {
     if (-not $Wav) { throw "Neither -Text nor -Wav was given." }
-    if (-not $Model -and -not $AsrServerUrl) { throw "ASR needs -Model (whisper .bin) or -AsrServerUrl." }
+    if (-not $Model -and -not $AsrServerUrl -and -not $FwServerUrl) { throw "ASR needs -Model (whisper .bin) or -AsrServerUrl or -FwServerUrl." }
     # Read the JSON from a FILE (UTF-8). Piping native stdout in PS 5.1 breaks the
     # encoding (pitfall #14): Turkish characters are decoded incorrectly.
     $asrJson = Join-Path $outRoot "asr.json"
     $asrErr = Join-Path $outRoot "asr.err.txt"
     $asrArgs = @($asr, "--wav", $Wav, "--lang", $Lang, "--out", $asrJson)
-    if ($AsrServerUrl) { $asrArgs += @("--server-url", $AsrServerUrl) }
+    if ($FwServerUrl) { $asrArgs += @("--fw-server", $FwServerUrl) }
+    elseif ($AsrServerUrl) { $asrArgs += @("--server-url", $AsrServerUrl) }
     else { $asrArgs += @("--model", $Model) }
     if ($Whisper) { $asrArgs += @("--whisper", $Whisper) }
     if ($Ffmpeg) { $asrArgs += @("--ffmpeg", $Ffmpeg) }
