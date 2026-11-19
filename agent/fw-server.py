@@ -159,6 +159,14 @@ def main() -> int:
     State.compute = args.compute
     print(f"model loaded in {time.perf_counter() - t0:.1f} s", flush=True)
 
+    # Warm-up: the first transcribe pays kernel/algorithm selection (measured up to ~28 s).
+    t1 = time.perf_counter()
+    try:
+        transcribe(np.zeros(SAMPLE_RATE, dtype=np.float32), "tr")
+        print(f"warmup {time.perf_counter() - t1:.2f} s", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"warmup skipped: {type(exc).__name__}: {exc}", flush=True)
+
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"READY: http://{args.host}:{args.port} (POST /transcribe)", flush=True)
     try:

@@ -76,6 +76,8 @@ if (-not (Test-Path -LiteralPath $Python)) {
 
 $outLog = Join-Path $logRoot 'tts-server.out.log'
 $errLog = Join-Path $logRoot 'tts-server.err.log'
+# Keep the caching allocator from reserving several GB it does not need (VRAM headroom).
+$env:PYTORCH_CUDA_ALLOC_CONF = 'expandable_segments:True'
 # WARNING: the repo path may contain non-ASCII characters; passing an absolute path argument to
 # Start-Process corrupts it -> make the working directory the repo and pass the script RELATIVE.
 $args = @('agent\tts-tools.py', '--serve', '--backend', $Backend, '--lang', $Lang,

@@ -264,13 +264,29 @@ def synth_chatterbox(text, out_wav, lang=None, voice_prompt=None, device="cuda",
             torch.manual_seed(use_seed)
         # Parameter names may differ between API versions: try the rich form first, else the plain one.
         t0 = time.perf_counter()
+        # Chatterbox hardcodes max_new_tokens=1000 inside generate(); a short sentence can then
+        # spend 10-20 s before EOS. Budget the sampler from the expected duration (~30 tokens/s).
+        cap = max(120, int(expected_audio_seconds(text) * 30) + 48)
+        t3 = getattr(model, "t3", None)
+        original = getattr(t3, "inference", None)
+
+        def capped(*a, **kw):
+            kw["max_new_tokens"] = min(int(kw.get("max_new_tokens") or cap), cap)
+            return original(*a, **kw)
+
+        if t3 is not None and original is not None:
+            t3.inference = capped
         try:
-            wav = model.generate(text, **{**kwargs, "exaggeration": exaggeration, "cfg_weight": cfg})
-        except TypeError:
             try:
-                wav = model.generate(text, **{**kwargs, "exaggeration": exaggeration})
+                wav = model.generate(text, **{**kwargs, "exaggeration": exaggeration, "cfg_weight": cfg})
             except TypeError:
-                wav = model.generate(text, **kwargs)
+                try:
+                    wav = model.generate(text, **{**kwargs, "exaggeration": exaggeration})
+                except TypeError:
+                    wav = model.generate(text, **kwargs)
+        finally:
+            if t3 is not None and original is not None:
+                t3.inference = original
         dt = time.perf_counter() - t0
         writer = _save_wav(wav, out_path, model.sr)
         secs = wav.shape[-1] / float(model.sr)
@@ -598,6 +614,15 @@ def serve(args) -> int:
                 print(f"warmup {time.perf_counter() - t_warm:.1f} s", flush=True)
             except Exception as exc:  # noqa: BLE001 - a failed warm-up must not block the server
                 print(f"warmup skipped: {type(exc).__name__}: {exc}", flush=True)
+            # Give the memory reserved by the warm-up back to the driver (Chatterbox keeps a large
+            # caching-allocator arena; without this the process sits ~3 GB above its real need).
+            try:
+                import torch
+                torch.cuda.empty_cache()
+                print(f"vram allocated {torch.cuda.memory_allocated() / 1e9:.2f} GB, "
+                      f"reserved {torch.cuda.memory_reserved() / 1e9:.2f} GB", flush=True)
+            except Exception:
+                pass
     except Exception as exc:
         _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, args.json_out)
         return 3
