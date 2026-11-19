@@ -19,8 +19,6 @@ param(
     [string]$Device = 'cuda',
     [string]$T3Model = 'v3',
     [string]$VoicePrompt = '',
-    [string]$Piper = '',
-    [string]$PiperModel = '',
     [string]$Bind = '127.0.0.1',
     [int]$Port = 8082,
     [int]$Seed = -1,
@@ -64,10 +62,7 @@ if ($existing) {
     Write-Host "tts-server already running (pid $($existing[0].ProcessId)); not starting another."
     exit 0
 }
-if (-not $Python) {
-    if ($Backend -eq 'piper') { $Python = 'python' }   # piper is stdlib-only (no torch/venv needed)
-    else { $Python = Join-Path $env:USERPROFILE 'tts-venv\Scripts\python.exe' }
-}
+if (-not $Python) { $Python = Join-Path $env:USERPROFILE 'tts-venv\Scripts\python.exe' }
 if (-not (Test-Path -LiteralPath $Python)) {
     $resolved = (Get-Command $Python -ErrorAction SilentlyContinue).Source
     if ($resolved) { $Python = $resolved }
@@ -88,21 +83,8 @@ if ($NoSoftg) { $args += @('--chatterbox-no-softg') }
 if ($TrRaw) { $args += @('--chatterbox-tr-raw') }
 if ($Tf32) { $args += @('--tf32') }
 
-# piper: IMPORTANT - the binary and the voice file must be on an ASCII path (espeak-ng/onnxruntime
-# crash on a non-ASCII path). Default: %LOCALAPPDATA%\altai\piper (ASCII).
-if ($Backend -eq 'piper') {
-    if (-not $Piper) { $Piper = Join-Path $env:LOCALAPPDATA 'altai\piper\piper.exe' }
-    if (-not $PiperModel) { $PiperModel = Join-Path $env:LOCALAPPDATA 'altai\piper\voice.onnx' }
-}
-if ($Piper) { $args += @('--piper', $Piper) }
-if ($PiperModel) { $args += @('--piper-model', $PiperModel) }
-
 Write-Host "starting tts-server (backend=$Backend, lang=$Lang, device=$Device, $Bind`:$Port)"
-if ($Backend -eq 'piper') {
-    Write-Host "piper: binary=$Piper voice=$PiperModel (no loading; ~0.3 s per request)"
-} else {
-    Write-Host "loading model (torch+Chatterbox can take ~20 s)..."
-}
+Write-Host "loading model (torch+Chatterbox can take ~20 s)..."
 $proc = Start-Process -FilePath $Python -ArgumentList $args -WorkingDirectory $root `
     -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru -WindowStyle Hidden
 $proc.Id | Set-Content -LiteralPath $pidFile

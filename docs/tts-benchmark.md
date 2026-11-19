@@ -1,5 +1,8 @@
 # TTS benchmark · Turkish (Chatterbox-centric, excluding Fish)
 
+> **Note (2026-11-19):** the CPU TTS engine evaluated in the early sections was dropped; the project
+> now uses **Chatterbox only**. Those measurements are kept as historical evidence.
+
 This document compares **Chatterbox** with other modern engines for Turkish TTS. **Fish S2 Pro is out
 of scope** (decision #15 — it is not entering the project).
 
@@ -79,16 +82,10 @@ noticeably).
 |---|---|---|---|
 | **Trendyol-TTS** (=VoxCPM2 + TR LoRA) | ~5.3–5.6 GB | ~3.0 (~3× slower than real time) | ~0.08 (clean sample) |
 | Chatterbox | **~3.3 GB** (measured) | **RTF ~1.1** (measured) | ✅ good (with tr-fix+respell) |
-| **Piper** (`tr_TR-dfki-medium`) | **0 GB (CPU)** | **RTF 0.19** (measured) | **✅ WER 0.000** (5/5 verbatim) |
 | SAPI | 0 (CPU) | very fast | ❌ **no Turkish voice on this machine** (only Zira en-US) |
 
-> **Measured (2026-10-18):** Piper `tr_TR-dfki-medium` — 5 sentences, **RTF 0.19** (synthesis 2.40 s /
-> audio 12.52 s); round-trip with whisper turbo **WER 0.000** (diacritics correct). In the streaming
-> pipeline first audio is **0.77–0.90 s** (Chatterbox 4.2–7.6 s; 30 s with guard retry). Piper runs
-> **on CPU** → leaves the GPU entirely to the LLM (principle #1) and produces no guard retries.
-> Details: `docs/streaming-pipeline.md` §5.2.
-> ⚠️ Setup: piper + voice file must live in an **ASCII** directory (`scripts/install-piper.ps1`),
-> otherwise espeak-ng fails with `Illegal byte sequence` / onnxruntime with `0xC0000409`.
+> **Historical note:** a CPU TTS engine was evaluated here (RTF ~0.19, round-trip WER 0.000) and was
+> fast, but robotic. It was **dropped on 2026-11-19**; the project uses **Chatterbox only**.
 
 ## 6. Conclusion and impact on the project
 

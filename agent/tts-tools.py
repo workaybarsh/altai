@@ -5,7 +5,6 @@ Backends:
   - chatterbox : Resemble AI Chatterbox (including Multilingual V3) -- primary, most natural
   - voxcpm     : Trendyol-TTS (openbmb/VoxCPM2 + Turkish LoRA, MIT, ~2B) -- TR native,
                  high quality but HEAVY (~5.6 GB VRAM, RTF ~3) -> offline/high quality
-  - piper      : fast/CPU fallback (fails honestly if it is not installed)
   - sapi       : Windows SAPI last resort
 
 The contract is JSON (stdout). If the model/binary is missing it returns `ok=false`;
@@ -363,43 +362,6 @@ def synth_voxcpm(text, out_wav, model_id="Trendyol/Trendyol-TTS", cfg=2.0, times
             "model": model_id, "cfg": cfg, "inference_timesteps": timesteps}
 
 
-# ------------------------------------------------------------------ piper (fallback)
-
-def _local_piper(name):
-    """Default piper location installed by scripts/install-piper.ps1 (ASCII path)."""
-    base = os.environ.get("LOCALAPPDATA")
-    if not base:
-        return None
-    p = os.path.join(base, "altai", "piper", name)
-    return p if os.path.exists(p) else None
-
-
-def synth_piper(text, out_wav, model_path=None, piper_exe=None):
-    import shutil
-    import subprocess
-    exe = piper_exe or shutil.which("piper") or _local_piper("piper.exe")
-    if not exe:
-        raise RuntimeError("piper not found (pass PATH or --piper; see scripts/install-piper.ps1)")
-    if not os.path.exists(exe):
-        exe = shutil.which(exe)
-        if not exe:
-            raise RuntimeError(f"piper not found: {piper_exe}")
-    model_path = model_path or _local_piper("voice.onnx")
-    if not model_path or not os.path.exists(model_path):
-        raise RuntimeError(f"piper model not found: {model_path}")
-    t0 = time.perf_counter()
-    proc = subprocess.run([exe, "-m", model_path, "-f", out_wav], input=text,
-                          capture_output=True, text=True, encoding="utf-8", errors="replace")
-    dt = time.perf_counter() - t0
-    if proc.returncode != 0:
-        raise RuntimeError(f"piper error: {(proc.stderr or '').strip()[:300]}")
-    with wave.open(out_wav, "rb") as w:
-        secs = w.getnframes() / float(w.getframerate() or 1)
-        sr = w.getframerate()
-    return {"out": out_wav, "sample_rate": int(sr), "audio_seconds": round(secs, 3),
-            "tts_seconds": round(dt, 3), "rtf": round((dt / secs) if secs else float("inf"), 3)}
-
-
 # ------------------------------------------------------------------ sapi (last resort)
 
 def synth_sapi(text, out_wav):
@@ -472,23 +434,8 @@ def create_server(args):
 
     def ensure_model():
         if state["model"] is None:
-            if args.backend == "piper":
-                # for piper no "model" is held in memory: each request runs a short-lived piper.exe
-                # (~0.27 s voice load). Only the binary + voice file are validated here.
-                import shutil
-                exe = args.piper or shutil.which("piper") or _local_piper("piper.exe")
-                if exe and not os.path.exists(exe):
-                    exe = shutil.which(exe)
-                if not exe:
-                    raise RuntimeError(f"piper not found (PATH or --piper): {args.piper}")
-                args.piper_model = args.piper_model or _local_piper("voice.onnx")
-                if not args.piper_model or not os.path.exists(args.piper_model):
-                    raise RuntimeError(f"piper model not found: {args.piper_model}")
-                state["model"] = {"piper": exe}
-                state["load_seconds"] = 0.0
-                return state["model"]
             if args.backend != "chatterbox":
-                raise RuntimeError("server mode supports chatterbox and piper")
+                raise RuntimeError("server mode supports chatterbox only")
             t0 = time.perf_counter()
             state["model"] = load_chatterbox(lang=args.lang, device=args.device,
                                              t3_model=args.t3_model)
@@ -554,14 +501,11 @@ def create_server(args):
                     out_i = os.path.join(out_dir, f"{prefix}{i}.wav")
                     try:
                         ensure_speakable(t)
-                        if args.backend == "piper":
-                            r = synth_piper(t, out_i, args.piper_model, args.piper)
-                        else:
-                            r = synth_chatterbox(t, out_i, lang, voice_prompt, args.device,
-                                                args.exaggeration, args.cfg, args.t3_model, args.seed,
-                                                not tr_raw, not tr_raw,
-                                                model=model, guard=not getattr(args, "no_guard", False),
-                                                softg=softg)
+                        r = synth_chatterbox(t, out_i, lang, voice_prompt, args.device,
+                                            args.exaggeration, args.cfg, args.t3_model, args.seed,
+                                            not tr_raw, not tr_raw,
+                                            model=model, guard=not getattr(args, "no_guard", False),
+                                            softg=softg)
                         r["ok"] = True
                     except Exception as exc:
                         r = {"ok": False, "out": out_i,
@@ -638,7 +582,7 @@ def serve(args) -> int:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Swappable TTS (Altai)")
-    ap.add_argument("--backend", default="chatterbox", choices=["chatterbox", "voxcpm", "piper", "sapi"])
+    ap.add_argument("--backend", default="chatterbox", choices=["chatterbox", "voxcpm", "sapi"])
     ap.add_argument("--text")
     ap.add_argument("--text-file")
     ap.add_argument("--out", default=None, help="output wav in single mode (in batch mode use --out-prefix)")
@@ -661,8 +605,6 @@ def main(argv=None) -> int:
     ap.add_argument("--voxcpm-cfg", type=float, default=2.0)
     ap.add_argument("--voxcpm-steps", type=int, default=16)
     ap.add_argument("--no-optimize", action="store_true", help="disable voxcpm optimize")
-    ap.add_argument("--piper", default=None)
-    ap.add_argument("--piper-model", default=None)
     ap.add_argument("--json-out", default=None)
     # --- batch generation (the model is loaded ONCE) ---
     ap.add_argument("--batch-file", default=None,
@@ -751,8 +693,6 @@ def main(argv=None) -> int:
         elif args.backend == "voxcpm":
             res = synth_voxcpm(text, args.out, args.voxcpm_model, args.voxcpm_cfg,
                                args.voxcpm_steps, args.device, not args.no_optimize)
-        elif args.backend == "piper":
-            res = synth_piper(text, args.out, args.piper_model, args.piper)
         else:
             res = synth_sapi(text, args.out)
     except Exception as exc:

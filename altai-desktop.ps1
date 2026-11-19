@@ -12,7 +12,7 @@
 # Examples:
 #   pwsh -File altai-desktop.ps1
 #   pwsh -File altai-desktop.ps1 -Backend chatterbox -NoThink
-#   pwsh -File altai-desktop.ps1 -SelfTest -Wav logs\tts\piper-tr.wav   # no UI, headless check
+#   pwsh -File altai-desktop.ps1 -SelfTest -Wav logs\tts\sample.wav  # no UI, headless check
 #
 # Note: text kept ASCII (Windows PowerShell 5.1 reads a BOM-less .ps1 as ANSI).
 

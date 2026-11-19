@@ -104,37 +104,20 @@ End to end (with real ASR, `-Wav`; whisper turbo CPU):
   below).
 
 
-### 5.2 TTS engine change: Chatterbox → Piper (2026-10-18, same session)
+### 5.2 TTS engine choice (2026-11-19): Chatterbox
 
-In the streaming pipeline the real bottleneck became **per-sentence TTS cost** (Chatterbox on GPU at
-RTF ~1.2 = *slower* than speech). Same prompt, same session, A/B with Piper (CPU, `tr_TR-dfki-medium`):
+**Chatterbox is the only live TTS.** Measured on the GPU (RTF 1.1–1.4 in isolation; ~2–3 while the
+LLM streams on the same card):
 
-| TTS engine | First token | First sentence | **First audio** | End of turn |
-|---|---|---|---|---|
-| Chatterbox (GPU) #1 | 0.26 s | 0.33 s | **30.17 s** ⚠️ *(guard retry)* | 51.49 s |
-| Chatterbox (GPU) #2 | 0.26 s | 0.33 s | **4.23 s** | 18.79 s |
-| **Piper (CPU)** #1 *(cold)* | 0.48 s | 0.54 s | **2.21 s** | 3.40 s |
-| **Piper (CPU)** #2 | 0.25 s | 0.35 s | **0.90 s** | 2.91 s |
-| **Piper (CPU)** #3 | 0.25 s | 0.29 s | **0.77 s** | 2.06 s |
+- The sampler is capped by the expected utterance duration (AGENTS pitfall #20), which cut the
+  short-sentence worst case from 6–16 s to ~3 s.
+- The server warms up at start (`empty_cache` afterwards), so the first real turn does not pay the
+  CUDA setup cost.
+- First audio (LLM + TTS, no thinking) measured **3.7–7.2 s**; **Chatterbox's first sentence is
+  3–5 s of that** and is the remaining latency floor.
 
-Piper on its own (5 sentences, `logs/piper-test/`): **RTF 0.19** (synthesis 2.40 s / audio 12.52 s);
-round-trip (whisper turbo) **WER 0.000** — 5/5 sentences verbatim, diacritics correct.
-
-**How to read it:**
-- **LLM + TTS first audio came down into the target: ~0.8–0.9 s** (4.2–7.6 s with Chatterbox; 30 s with a guard retry).
-- Piper runs **on CPU** → restores architecture **principle #1** ("STT and TTS on CPU") and leaves the
-  GPU entirely to the LLM; it also has **no guard retry** (deterministic, does not produce
-  duration-dependent hallucination).
-- The cold first run (2.21 s) coincides with the LLM's first turn; when warm, first audio is **0.77–0.90 s**.
-
-End to end (real ASR + streaming Piper, `-Wav`; whisper turbo CPU):
-
-| Run | ASR | First sentence | First audio (in engine) | **End-to-end first audio** |
-|---|---|---|---|---|
-| **F) ASR + Piper** | 5.24 s audio → **9.95 s** (RTF 1.90) | 0.35 s | 1.78 s | **~11.7 s** |
-
-**New bottleneck table:** ASR ~10 s (**85%**) · LLM first sentence ~0.3 s · TTS ~0.5 s.
-So **the TTS side is solved**; `<1 s` now hinges only on **ASR**.
+End to end on the GPU stack (faster-whisper + 9B + Chatterbox): ASR 0.3–0.5 s, LLM TTFT ~0.3 s,
+first sentence ~0.3 s → **first audio ~5 s**, total VRAM ~11.6 GB.
 
 ## 6. Known limits / next steps
 
@@ -142,9 +125,9 @@ So **the TTS side is solved**; `<1 s` now hinges only on **ASR**.
   rise slightly compared to batch mode (but **first audio** arrives much earlier).
 - Sentence boundaries are **heuristic** (punctuation/length heuristics); responses containing
   markdown/emoji may need cleanup before going to TTS (for now only symbol-only sentences are skipped).
-- The TTS side is **solved with Piper**: first audio (LLM+TTS) 7.0–7.6 s → **0.8–0.9 s** (§5.2). The only
-  remaining bottleneck is **ASR** (~10 s on CPU; ~85% of the total end-to-end time). For a real
-  `<1 s`, ASR needs either a smaller model or a GPU (open decision — `decisions.md` #19).
+- The TTS side is **solved with Chatterbox**; the remaining latency is its first sentence (3–5 s, §5.2).
+  ASR is no longer the bottleneck on the GPU stack (0.3–0.5 s). For a real `<1 s`, TTS would need a
+  streaming engine (open decision — `decisions.md` #26).
 - ⚠️ **Short sentence + guard retry:** if the guard's audio limit is exceeded it regenerates the
   sentence; on short sentences both generations can stay long → first audio rises to 13–18 s.
   Options: disable retry / floor the limit for short sentences (e.g. <20 letters), pick the shortest

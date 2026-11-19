@@ -23,7 +23,7 @@ So the work is divided and the language model stays **resident**.
                  │                 │  response tokens (stream)      │        │
                  │                 └────────────┬───────────────────┘        │
                  │                              ▼                            │
- Speaker ◄── playback ◄── TTS (Chatterbox/Piper) ◄── first sentence ◄──┘     │
+ Speaker ◄── playback ◄── TTS (Chatterbox) ◄── first sentence ◄──┘     │
                  └───────────────────────────────────────────────────────────┘
 ```
 
@@ -71,7 +71,7 @@ sequenceDiagram
 | Endpoint | 0–200 ms | Push-to-talk = 0; VAD + ~200 ms threshold |
 | STT (whisper.cpp) | ≤ 400 ms | `large-v3-turbo`; `medium`/`small` if needed |
 | LLM first token | ≤ 250 ms | Resident model + **KV prefix cache** |
-| TTS first audio | ≤ 150 ms | Chatterbox/Piper, on the first sentence (Trendyol-TTS/`voxcpm` not suitable for live) |
+| TTS first audio | ≤ 150 ms | Chatterbox, on the first sentence (Trendyol-TTS/`voxcpm` not suitable for live) |
 | Playback buffer | ~50 ms | Small buffer |
 
 > t₀ = last word ended · t₁ = first audio emitted · Target `t₁ − t₀ < 1000 ms`
@@ -123,15 +123,14 @@ Speech → text is done with **whisper.cpp** (Qwen3-ASR is not used).
 
 | Engine | Naturalness | Turkish | Real-time on CPU | License | Role |
 |---|---|---|---|---|---|
-| **Chatterbox Multilingual v3** | Highest | ⚠️ weak | ❌ (needs GPU) | MIT | EN primary (realistic) |
+| **Chatterbox Multilingual v3** | Highest | ⚠️ weak | ❌ (needs GPU) | MIT | **Primary voice** (realistic) |
 | **Trendyol-TTS** (`voxcpm`; VoxCPM2 + TR LoRA) | High | ✅ intelligible | ❌ (RTF ~3 even on GPU) | MIT | **TR offline/high quality** |
-| **Piper** | Medium | ✅ | ✅ | GPL-3.0 | Fast/fallback |
 | XTTS-v2 | High | ✅ | ❌ | Non-commercial | Alternative |
 | Kokoro / F5-TTS | High | ❌ | ✅ / ❌ | Apache / CC-BY-NC | No TR → rejected |
 | Windows SAPI | Low | ✅ | ✅ | — | Last resort |
 
 - Default **Chatterbox v3**; ~2–3 GB on the GPU → ~8 GB with the LLM at Q4 (measurement required).
-- If the GPU gets tight, **Piper** (CPU) drops into live mode.
+- If the GPU gets tight, **SAPI** (CPU) drops into live mode.
 - Chatterbox output carries a PerTh watermark (MIT, inaudible) — not a blocker.
 - **Trendyol-TTS (`voxcpm`):** native TR and intelligible (round-trip WER ~0.08) **but** ~5.6 GB VRAM +
   RTF ~3 → **not** taken into the live `<1 s` pipeline; offline/high-quality engine (decision #16). Details:
@@ -168,7 +167,7 @@ GPU; STT+TTS on the CPU (no model swapping). The two profiles below scale around
 |---|---|---|---|---|
 | LLM | Qwen3.5-9B **i1-Q5_K_M** + MTP | **GPU** | **~7.0 GB** (@4k) – ~7.3 (@8k) | short context; if tight, **i1-Q4_K_M** (~5.6 GB) |
 | STT | whisper.cpp **large-v3-turbo** | **CPU** | RAM ~2 GB | `medium`/`small` if needed |
-| TTS (live) | **Piper** | **CPU** | RAM ~0.1 GB | robotic but fast |
+| TTS (live) | **Chatterbox** | **GPU** | ~3.3 GB VRAM | natural, RTF 1.1-1.4 |
 | TTS (quality/offline) | **Chatterbox** (TR fix) | **CPU** | RAM ~2–3 GB | slow on CPU (RTF>1 possible) |
 | **Total** | | | **GPU ~7.0 / 8 GB** · **RAM ~8–12 / 16 GB** | Whisper+TTS **cannot** go on the GPU |
 
@@ -196,7 +195,7 @@ GPU; STT+TTS on the CPU (no model swapping). The two profiles below scale around
 | `altai-desktop.ps1` | WinForms UI, event loop |
 | `agent/llm-run.ps1` | `llama-server`, MTP, VRAM gate |
 | `agent/asr-tools.py` | whisper.cpp inference |
-| `agent/tts-tools.py` | Chatterbox / voxcpm (Trendyol-TTS) / Piper / SAPI |
+| `agent/tts-tools.py` | Chatterbox / voxcpm (Trendyol-TTS) / SAPI |
 | `agent/pipeline.ps1` | ASR → LLM → sentence → TTS (**skeleton**, `agent/pipeline.ps1`) |
 | `agent/audio-capture.ps1` | winmm recording |
 

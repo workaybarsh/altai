@@ -15,7 +15,7 @@
 #   pwsh -File agent\pipeline.ps1 -Text "Merhaba, nasilsin?" -Lang tr
 #   pwsh -File agent\pipeline.ps1 -Wav recording.wav -Model models\ggml-large-v3-turbo-q5_0.bin -AsrThreads 12
 #   pwsh -File agent\pipeline.ps1 -Wav recording.wav -AsrServerUrl http://127.0.0.1:8081 `
-#        -TtsServerUrl http://127.0.0.1:8082 -Backend piper      # CPU TTS, no torch needed
+#        -TtsServerUrl http://127.0.0.1:8082 -Backend chatterbox
 #
 # Note: if a component (whisper / llama-server) is missing it fails HONESTLY, it does not invent one.
 #       For the TTS backends (chatterbox/voxcpm) pass the tts-venv python as -Python.
@@ -34,8 +34,6 @@ param(
   [string]$Backend = "chatterbox",
   [string]$TtsServerUrl,
   [string]$Device = "cuda",
-  [string]$Piper,
-  [string]$PiperModel,
   [string]$Python = "python",
   [string]$OutDir = "logs\pipeline",
   [string]$VoicePrompt,
@@ -50,13 +48,6 @@ $asr = Join-Path $repo "agent\asr-tools.py"
 $tts = Join-Path $repo "agent\tts-tools.py"
 $outRoot = Join-Path $repo $OutDir
 New-Item -ItemType Directory -Force -Path $outRoot | Out-Null
-
-# piper (CPU TTS): the binary and the voice file live in an ASCII directory (scripts\install-piper.ps1);
-# espeak-ng/onnxruntime crash on a non-ASCII path.
-if ($Backend -eq "piper") {
-    if (-not $Piper) { $Piper = Join-Path $env:LOCALAPPDATA "altai\piper\piper.exe" }
-    if (-not $PiperModel) { $PiperModel = Join-Path $env:LOCALAPPDATA "altai\piper\voice.onnx" }
-}
 
 # --- 1) ASR: convert to text ---
 if ($TextFile) { $Text = [System.IO.File]::ReadAllText($TextFile).Trim() }
@@ -137,10 +128,6 @@ function Invoke-TtsSingle([string]$Sentence, [int]$Index) {
     $ttsArgs = @($tts, "--backend", $Backend, "--lang", $Lang, "--text-file", $txtFile,
                  "--out", $wavFile, "--device", $Device, "--json-out", $jsonFile)
     if ($VoicePrompt) { $ttsArgs += @("--voice-prompt", $VoicePrompt) }
-    if ($Backend -eq "piper") {
-        if ($Piper) { $ttsArgs += @("--piper", $Piper) }
-        if ($PiperModel) { $ttsArgs += @("--piper-model", $PiperModel) }
-    }
     $oldEap = $ErrorActionPreference
     $ErrorActionPreference = "Continue"   # do not treat native stderr (tqdm/warnings) as an error
     & $Python @ttsArgs 1> $null 2> $errFile   # swallow stdout: JSON is read from the file
@@ -164,7 +151,7 @@ if ($sentences.Count -gt 0) {
         # A rare socket reset (WinError 10054) can happen on Windows loopback -> 2 attempts.
         # NO fallback to a local Chatterbox: because the server keeps the model in VRAM, a second
         # Chatterbox would OOM; an honest error is returned instead of silent corruption.
-        # The same path serves the piper backend (stateless, but one HTTP request per turn).
+        # The same path serves every backend over one HTTP request per turn.
         $body = @{ texts = @([string[]]$sentences); lang = $Lang; out_dir = $outRoot; prefix = "tts_" }
         if ($VoicePrompt) { $body.voice_prompt = $VoicePrompt }
         $attempt = 0

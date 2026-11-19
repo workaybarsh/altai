@@ -19,13 +19,9 @@ def test_empty_text_returns_error(tmp_path, capsys):
     assert payload["ok"] is False
 
 
-def test_missing_piper_reports_error(tmp_path, capsys):
-    code = tts.main(["--backend", "piper", "--text", "merhaba", "--out", str(tmp_path / "a.wav"),
-                     "--piper", "kesinlikle-olmayan-piper-x"])
-    payload = json.loads(capsys.readouterr().out)
-    assert code == 3
-    assert payload["ok"] is False
-    assert "piper" in payload["error"].lower()
+def test_unknown_backend_is_rejected(tmp_path, capsys):
+    with pytest.raises(SystemExit):
+        tts.main(["--backend", "nope", "--text", "merhaba", "--out", str(tmp_path / "a.wav")])
 
 
 def test_sapi_synthesizes_on_windows(tmp_path, capsys):
@@ -348,8 +344,8 @@ def test_json_handles_emoji_without_crashing(tmp_path):
 def test_batch_mode_rejects_non_chatterbox(tmp_path, capsys):
     bf = tmp_path / "b.txt"
     bf.write_text("bir\niki\n", encoding="utf-8")
-    code = tts.main(["--backend", "piper", "--batch-file", str(bf),
-                     "--out-prefix", str(tmp_path / "o_"), "--piper", "yok"])
+    code = tts.main(["--backend", "sapi", "--batch-file", str(bf),
+                     "--out-prefix", str(tmp_path / "o_")])
     payload = json.loads(capsys.readouterr().out)
     assert code == 3
     assert payload["ok"] is False
@@ -392,72 +388,6 @@ def _post_json(url, data):
             last = exc
             time.sleep(0.1 * (attempt + 1))
     raise last
-
-
-def test_tts_server_piper_dispatch(monkeypatch, tmp_path):
-    """piper server mode: no model is loaded into memory; each request goes to synth_piper (no GPU needed)."""
-    import threading
-    import types
-
-    exe = tmp_path / "piper.exe"
-    exe.write_bytes(b"x")
-    model = tmp_path / "voice.onnx"
-    model.write_bytes(b"y")
-
-    calls = []
-
-    def fake_piper(text, out_wav, model_path=None, piper_exe=None):
-        calls.append((text, out_wav, model_path, piper_exe))
-        os.makedirs(os.path.dirname(os.path.abspath(out_wav)), exist_ok=True)
-        with open(out_wav, "wb") as f:
-            f.write(b"RIFF")
-        return {"out": out_wav, "audio_seconds": 1.0, "tts_seconds": 0.1, "rtf": 0.1}
-
-    monkeypatch.setattr(tts, "synth_piper", fake_piper)
-
-    args = types.SimpleNamespace(backend="piper", lang="tr", device="cpu", t3_model="v3",
-                                 exaggeration=0.5, cfg=0.5, seed=None, chatterbox_tr_raw=False,
-                                 voice_prompt=None, host="127.0.0.1", port=0,
-                                 piper=str(exe), piper_model=str(model))
-    srv = tts.create_server(args)
-    srv.ensure_model()          # no load for piper, validation only
-    port = srv.server_address[1]
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    try:
-        health = _post_json(f"http://127.0.0.1:{port}/health", None)
-        body = json.dumps({"texts": ["merhaba", "dunya"], "out_dir": str(tmp_path),
-                           "prefix": "p_"}).encode()
-        out = _post_json(f"http://127.0.0.1:{port}/tts", body)
-    finally:
-        srv.shutdown()
-        srv.server_close()
-
-    assert health["ok"] is True and health["backend"] == "piper"
-    assert health["loaded"] is True and health["load_seconds"] == 0.0
-    assert out["ok"] is True and out["count"] == 2 and out["failed"] == 0
-    # ⚠️ If a reset happens on Windows loopback, _post_json resends the request and the same batch
-    # is synthesised twice; so we look at the **first-seen order**, not the raw sequence.
-    texts = []
-    for c in calls:
-        if c[0] not in texts:
-            texts.append(c[0])
-    assert texts == ["merhaba", "dunya"]
-    assert calls[0][2] == str(model) and calls[0][3] == str(exe)
-    assert os.path.exists(tmp_path / "p_1.wav")
-
-
-def test_tts_server_piper_missing_model_raises(tmp_path):
-    """piper server mode: a missing binary/voice file gives an honest error (no silent failure)."""
-    import types
-
-    args = types.SimpleNamespace(backend="piper", lang="tr", device="cpu", t3_model="v3",
-                                 exaggeration=0.5, cfg=0.5, seed=None, chatterbox_tr_raw=False,
-                                 voice_prompt=None, host="127.0.0.1", port=0,
-                                 piper=str(tmp_path / "yok.exe"),
-                                 piper_model=str(tmp_path / "yok.onnx"))
-    srv = tts.create_server(args)
-    with pytest.raises(RuntimeError):
-        srv.ensure_model()
 
 
 def test_tts_server_passes_respell_switches_per_request(monkeypatch, tmp_path):
