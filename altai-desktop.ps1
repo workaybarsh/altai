@@ -52,6 +52,8 @@ $state = [hashtable]::Synchronized(@{
     Reply   = ''
     Latency = ''
     Ttfa    = ''
+    Phase   = 'idle'
+    EventsPath = ''
     Error   = ''
     Vram    = ''
 })
@@ -168,7 +170,11 @@ $turnBlock = {
         if ($noThink) { $argv += '-NoThink' }
 
         $log = Join-Path $outDir 'turn.log'
+        $events = Join-Path $outDir 'events.jsonl'
+        $state.EventsPath = $events
+        $env:ALTAI_EVENTS = $events
         & pwsh @argv *> $log
+        Remove-Item Env:\ALTAI_EVENTS -ErrorAction SilentlyContinue
 
         $lines = Get-Content -LiteralPath $log -Encoding UTF8
         if (($lines -join "`n") -match 'No speech detected') {
@@ -508,8 +514,33 @@ $timer.Add_Tick({
     $msgLabel.Text = if ($state.Recording) { "Recording... $((Get-AltaiRecordingSeconds)) s" } else { $state.Msg }
 
     $talkBtn.Enabled = ($state.Ready -and -not $state.Busy)
-    if ($state.Busy -and -not $state.Recording) { $talkBtn.Text = 'Working...' }
-    elseif (-not $state.Recording -and -not $state.Busy) { $talkBtn.Text = 'Click to speak' }
+    $phase = 'idle'
+    if ($state.Busy -and -not $state.Recording) {
+        $phase = 'thinking'
+        if ($state.EventsPath -and (Test-Path -LiteralPath $state.EventsPath)) {
+            try {
+                $ev = Get-Content -LiteralPath $state.EventsPath -Encoding UTF8 |
+                    ForEach-Object { if ($_.Trim()) { $_ | ConvertFrom-Json } }
+                $speaks = @($ev | Where-Object { $_.event -eq 'speak' })
+                if ($speaks.Count -gt 0) {
+                    $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
+                    $end = ($speaks | ForEach-Object { [double]$_.ts + [double]$_.audio } |
+                        Measure-Object -Maximum).Maximum
+                    $phase = if ($now -le $end + 0.5) { 'speaking' } else { 'thinking' }
+                }
+            } catch { }
+        }
+    }
+    switch ($phase) {
+        'thinking' { $talkBtn.Text = 'Thinking...'; $talkBtn.BackColor = [System.Drawing.Color]::FromArgb(90, 80, 140) }
+        'speaking' { $talkBtn.Text = 'Speaking...'; $talkBtn.BackColor = [System.Drawing.Color]::FromArgb(40, 90, 130) }
+        default {
+            if (-not $state.Recording) {
+                $talkBtn.Text = 'Click to speak'
+                $talkBtn.BackColor = [System.Drawing.Color]::FromArgb(40, 120, 90)
+            }
+        }
+    }
 
     if ($state.You) { Append-Log 'You' $state.You; $state.You = '' }
     if ($state.Reply) { Append-Log 'Altai' $state.Reply; $state.Reply = '' }

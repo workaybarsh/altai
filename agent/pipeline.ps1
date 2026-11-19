@@ -70,7 +70,7 @@ if (-not $Text) {
     & $Python @asrArgs 1> $null 2> $asrErr
     $code = $LASTEXITCODE
     $ErrorActionPreference = $oldEap
-    if ($code -ne 0 -or -not (Test-Path $asrJson)) {
+    if (-not (Test-Path $asrJson)) {
         throw "ASR failed (exit $code); error: $asrErr"
     }
     $asrOut = Get-Content -Raw -Encoding UTF8 $asrJson | ConvertFrom-Json
